@@ -1,5 +1,7 @@
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ferdousbhai-investor-agent-badge.png)](https://mseep.ai/app/ferdousbhai-investor-agent)
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/ferdousbhai/investor-agent)](https://archestra.ai/mcp-catalog/ferdousbhai__investor-agent)
+
 # investor-agent: A Financial Analysis MCP Server
 
 ## Overview
