@@ -157,13 +157,13 @@ def get_ticker_data(
     if news := yfinance_utils.get_news(ticker, limit=max_news):
         data["news"] = news
 
-    if recommendations := yfinance_utils.get_analyst_data(ticker, "recommendations", max_recommendations):
-        if not recommendations.empty:
-            data["recommendations"] = recommendations.to_dict('split')
+    recommendations = yfinance_utils.get_analyst_data(ticker, "recommendations", max_recommendations)
+    if recommendations is not None and not recommendations.empty:
+        data["recommendations"] = recommendations.to_dict('split')
 
-    if upgrades := yfinance_utils.get_analyst_data(ticker, "upgrades", max_upgrades):
-        if not upgrades.empty:
-            data["upgrades_downgrades"] = upgrades.to_dict('split')
+    upgrades = yfinance_utils.get_analyst_data(ticker, "upgrades", max_upgrades)
+    if upgrades is not None and not upgrades.empty:
+        data["upgrades_downgrades"] = upgrades.to_dict('split')
 
     return data
 

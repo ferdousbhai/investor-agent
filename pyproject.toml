@@ -37,6 +37,12 @@ ta = ["ta-lib>=0.6.3"]
 playwright = [
     "playwright>=1.54.0",
 ]
+test = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.0.0",
+]
 
 [project.scripts]
 investor-agent = "investor_agent.server:mcp.run"
@@ -53,3 +59,39 @@ source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "investor_agent/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short --strict-markers"
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
+
+[tool.coverage.run]
+source = ["investor_agent"]
+omit = [
+    "investor_agent/_version.py",
+    "tests/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError"
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
+]
