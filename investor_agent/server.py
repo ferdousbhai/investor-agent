@@ -315,3 +315,6 @@ if _ta_available:
             }
             for i in range(start_idx, len(dates))
         ]
+
+if __name__ == "__main__":
+    mcp.run()

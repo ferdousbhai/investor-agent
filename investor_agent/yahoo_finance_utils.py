@@ -2,6 +2,8 @@ import logging
 import datetime
 import json
 import re
+import os
+import tempfile
 from typing import Literal
 
 import httpx
@@ -20,8 +22,34 @@ YAHOO_HEADERS = {
 }
 
 def create_cached_async_client(headers: dict | None = None) -> httpx.AsyncClient:
-    """Create an httpx.AsyncClient with caching enabled via hishel."""
-    hishel.install_cache()
+    """Create an httpx.AsyncClient with environment-aware caching."""
+    try:
+        # Try to create cache in system temp directory
+        cache_dir = os.path.join(tempfile.gettempdir(), 'investor_mcp_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        storage = hishel.AsyncFileStorage(base_path=cache_dir)
+        logger.info(f"Using file-based cache at: {cache_dir}")
+        return hishel.AsyncCacheClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers=headers,
+            storage=storage,
+        )
+    except (OSError, PermissionError) as e:
+        logger.warning(f"Cannot create file cache ({e}), using memory cache")
+        # Fallback to memory-only caching
+        try:
+            storage = hishel.AsyncInMemoryStorage()
+            return hishel.AsyncCacheClient(
+                timeout=30.0,
+                follow_redirects=True,
+                headers=headers,
+                storage=storage,
+            )
+        except Exception as fallback_error:
+            logger.warning(f"Memory cache also failed ({fallback_error}), disabling cache")
+            # Final fallback: no caching
+
     return httpx.AsyncClient(
         timeout=30.0,
         follow_redirects=True,
