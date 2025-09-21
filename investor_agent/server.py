@@ -72,22 +72,29 @@ def create_async_client(headers: dict | None = None) -> httpx.AsyncClient:
 
 # Utility functions
 def validate_ticker(ticker: str) -> str:
-    """Validate and clean ticker symbol."""
     ticker = ticker.upper().strip()
     if not ticker:
         raise ValueError("Ticker symbol cannot be empty")
     return ticker
 
-def validate_date_range(start: str | None, end: str | None) -> None:
-    """Validate date format and range."""
-    for date_str in filter(None, [start, end]):
-        try:
-            datetime.datetime.fromisoformat(date_str)
-        except ValueError:
-            raise ValueError(f"Invalid date format: {date_str}. Use YYYY-MM-DD")
+def validate_date(date_str: str) -> datetime.date:
+    """Validate and parse a date string in YYYY-MM-DD format."""
+    try:
+        return datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError(f"Invalid date format: {date_str}. Use YYYY-MM-DD")
 
-    if start and end and datetime.datetime.fromisoformat(start) >= datetime.datetime.fromisoformat(end):
-        raise ValueError("start_date must be before end_date")
+def validate_date_range(start_str: str | None, end_str: str | None) -> None:
+    start_date = None
+    end_date = None
+
+    if start_str:
+        start_date = validate_date(start_str)
+    if end_str:
+        end_date = validate_date(end_str)
+
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("start_date must be before or equal to end_date")
 
 @yf_retry
 def yf_call(ticker: str, method: str, *args, **kwargs):
@@ -106,59 +113,6 @@ def get_options_chain(ticker: str, expiry: str, option_type: Literal["C", "P"] |
 
     return pd.concat([chain.calls, chain.puts], ignore_index=True)
 
-def get_filtered_options(
-    ticker: str,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    strike_lower: float | None = None,
-    strike_upper: float | None = None,
-    option_type: Literal["C", "P"] | None = None,
-) -> tuple[pd.DataFrame | None, str | None]:
-    """Get filtered options data with date and strike range filtering."""
-    try:
-        validate_date_range(start_date, end_date)
-
-        # Get options expirations - this is a property, not a method
-        t = yf.Ticker(ticker)
-        expirations = t.options
-        if not expirations:
-            return None, f"No options available for {ticker}"
-
-        # Filter by date
-        valid_expirations = [
-            exp for exp in expirations
-            if ((not start_date or exp >= start_date) and
-                (not end_date or exp <= end_date))
-        ]
-
-        if not valid_expirations:
-            return None, f"No options found for {ticker} within specified date range"
-
-        # Parallel fetch with error handling
-        with ThreadPoolExecutor() as executor:
-            chains = [
-                chain.assign(expiryDate=expiry)
-                for chain, expiry in zip(
-                    executor.map(lambda exp: get_options_chain(ticker, exp, option_type), valid_expirations),
-                    valid_expirations
-                ) if chain is not None
-            ]
-
-        if not chains:
-            return None, f"No options found for {ticker} matching criteria"
-
-        df = pd.concat(chains, ignore_index=True)
-
-        # Apply strike filters
-        if strike_lower is not None:
-            df = df[df['strike'] >= strike_lower]
-        if strike_upper is not None:
-            df = df[df['strike'] <= strike_upper]
-
-        return df.sort_values(['openInterest', 'volume'], ascending=[False, False]), None
-
-    except Exception as e:
-        return None, f"Failed to retrieve options data: {str(e)}"
 
 def format_datetime(dt: Any) -> Any:
     """Format datetime objects for JSON serialization, pass through other values."""
@@ -418,24 +372,53 @@ def get_options(
     """Get options data. Dates: YYYY-MM-DD. Type: C=calls, P=puts."""
     ticker_symbol = validate_ticker(ticker_symbol)
 
-    validate_date_range(start_date, end_date)
+    try:
+        # Validate dates
+        validate_date_range(start_date, end_date)
 
-    if start_date and end_date:
-        start_obj = datetime.datetime.fromisoformat(start_date)
-        end_obj = datetime.datetime.fromisoformat(end_date)
-        if start_obj >= end_obj:
-            raise ValueError("start_date must be before end_date")
+        # Get options expirations - this is a property, not a method
+        t = yf.Ticker(ticker_symbol)
+        expirations = t.options
+        if not expirations:
+            raise ValueError(f"No options available for {ticker_symbol}")
 
-    df, error = get_filtered_options(
-        ticker_symbol, start_date, end_date, strike_lower, strike_upper, option_type
-    )
-    if error:
-        raise ValueError(error)
-    if df is None:
-        raise ValueError(f"No options data available for {ticker_symbol}")
+        # Filter by date
+        valid_expirations = [
+            exp for exp in expirations
+            if ((not start_date or exp >= start_date) and
+                (not end_date or exp <= end_date))
+        ]
 
-    df_subset = df.head(num_options)
-    return to_clean_csv(df_subset)
+        if not valid_expirations:
+            raise ValueError(f"No options found for {ticker_symbol} within specified date range")
+
+        # Parallel fetch with error handling
+        with ThreadPoolExecutor() as executor:
+            chains = [
+                chain.assign(expiryDate=expiry)
+                for chain, expiry in zip(
+                    executor.map(lambda exp: get_options_chain(ticker_symbol, exp, option_type), valid_expirations),
+                    valid_expirations
+                ) if chain is not None
+            ]
+
+        if not chains:
+            raise ValueError(f"No options found for {ticker_symbol} matching criteria")
+
+        df = pd.concat(chains, ignore_index=True)
+
+        # Apply strike filters
+        if strike_lower is not None:
+            df = df[df['strike'] >= strike_lower]
+        if strike_upper is not None:
+            df = df[df['strike'] <= strike_upper]
+
+        df = df.sort_values(['openInterest', 'volume'], ascending=[False, False])
+        df_subset = df.head(num_options)
+        return to_clean_csv(df_subset)
+
+    except Exception as e:
+        raise ValueError(f"Failed to retrieve options data: {str(e)}")
 
 
 @mcp.tool()
@@ -539,81 +522,81 @@ def get_insider_trades(ticker: str, max_trades: int = 20) -> str:
     return to_clean_csv(trades)
 
 @mcp.tool()
-async def get_earnings_calendar(
-    start: str | None = None,
-    end: str | None = None,
+async def get_nasdaq_earnings_calendar(
+    date: str | None = None,
     limit: int = 100
 ) -> str:
-    """Get earnings calendar. Dates: YYYY-MM-DD. Defaults: start=today, end=+7 days."""
+    """Get earnings calendar for a specific date using Nasdaq API.
+    Date in YYYY-MM-DD format (defaults to today)
+    Returns CSV with: Date, Symbol, Company Name, EPS, % Surprise, Market Cap, etc.
+    Note: Single date only - call multiple times for date ranges.
+    """
     # Constants
-    PAGE_SIZE = 100
+    NASDAQ_EARNINGS_URL = "https://api.nasdaq.com/api/calendar/earnings"
+    NASDAQ_HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nasdaq.com/',
+        'Origin': 'https://www.nasdaq.com'
+    }
 
-    # Validate date formats if provided
-    validate_date_range(start, end)
-
-    # Set default dates if not provided
+    # Set default date if not provided or validate provided date
     today = datetime.date.today()
-    start_date = start or today.strftime('%Y-%m-%d')
-    end_date = end or (today + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+    target_date = validate_date(date) if date else today
 
+    date_str = target_date.strftime('%Y-%m-%d')
+    url = f"{NASDAQ_EARNINGS_URL}?date={date_str}"
 
-    all_dataframes = []
-    offset = 0
+    try:
+        logger.info(f"Fetching earnings for {date_str}")
 
-    # Fetch pages until we have enough data
-    YAHOO_EARNINGS_CALENDAR_URL = "https://finance.yahoo.com/calendar/earnings"
+        async with create_async_client(headers=NASDAQ_HEADERS) as client:
+            response = await client.get(url)
+            response.raise_for_status()
 
-    while len(all_dataframes) == 0 or len(pd.concat(all_dataframes, ignore_index=True)) < limit:
-        try:
-            url = f"{YAHOO_EARNINGS_CALENDAR_URL}?from={start_date}&to={end_date}&offset={offset}&size={PAGE_SIZE}"
-            logger.info(f"Fetching earnings calendar page {offset//PAGE_SIZE + 1}")
+            data = response.json()
 
-            async with create_async_client(headers=YAHOO_HEADERS) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+            if 'data' in data and data['data']:
+                earnings_data = data['data']
 
-                # Parse HTML tables with pandas
-                tables = pd.read_html(StringIO(response.text))
-                if not tables:
-                    df = pd.DataFrame()  # Empty DataFrame if no tables found
-                else:
-                    df = tables[0]  # Get the main earnings table
+                if earnings_data.get('headers') and earnings_data.get('rows'):
+                    headers = earnings_data['headers']
+                    rows = earnings_data['rows']
 
-            if df.empty or len(df) <= 1: # Empty earnings table - reached end of results
-                break
+                    # Extract column names from headers dict
+                    if isinstance(headers, dict):
+                        column_names = list(headers.values())
+                        column_keys = list(headers.keys())
+                    else:
+                        column_names = [h.get('label', h) if isinstance(h, dict) else str(h) for h in headers]
+                        column_keys = column_names
 
-            # Clean up the DataFrame - remove header rows and invalid entries
-            df_clean = df.copy()
+                    # Convert rows to DataFrame
+                    processed_rows = []
+                    for row in rows:
+                        if isinstance(row, dict):
+                            processed_row = [row.get(key, '') for key in column_keys]
+                            processed_rows.append(processed_row)
 
-            # Filter out header rows and invalid symbols
-            if len(df_clean.columns) > 0:
-                first_col = df_clean.iloc[:, 0].astype(str).str.strip()
-                valid_mask = ~first_col.isin(['Symbol', 'nan', 'NaN', '']) & ~first_col.isna()
-                df_clean = df_clean[valid_mask]
+                    if processed_rows:
+                        df = pd.DataFrame(processed_rows, columns=column_names)
+                        # Add date column at the beginning
+                        df.insert(0, 'Date', date_str)
 
-            if not df_clean.empty:
-                all_dataframes.append(df_clean)
+                        # Apply limit
+                        if len(df) > limit:
+                            df = df.head(limit)
 
-            logger.info(f"Retrieved {len(df_clean)} valid earnings from offset {offset}")
+                        logger.info(f"Retrieved {len(df)} earnings entries for {date_str}")
+                        return to_clean_csv(df)
 
-            # If we got less than expected, we've reached the end
-            if len(df) < 10:  # Assume less than 10 rows means end of data
-                logger.info(f"Got {len(df)} < 10 earnings - reached final page")
-                break
+            # No earnings data found
+            return f"No earnings announcements found for {date_str}. This could be due to weekends, holidays, or no scheduled earnings on this date."
 
-        except Exception as e:
-            logger.error(f"Error fetching earnings calendar: {e}")
-            break
-
-        offset += PAGE_SIZE
-
-    if not all_dataframes:
-        return ""
-
-    # Combine all DataFrames and limit results
-    combined_df = pd.concat(all_dataframes, ignore_index=True).head(limit)
-
-    return to_clean_csv(combined_df)
+    except Exception as e:
+        logger.error(f"Error fetching earnings for {date_str}: {e}")
+        return f"Error retrieving earnings data for {date_str}: {str(e)}"
 
 # Only register the technical indicator tool if TA-Lib is available
 if _ta_available:
