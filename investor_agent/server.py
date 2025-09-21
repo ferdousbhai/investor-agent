@@ -34,30 +34,24 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)]
 )
 
-# HTTP Headers for different APIs
-YAHOO_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
+# Minimal HTTP Headers - only essential ones
+BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
-CNN_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://www.cnn.com/markets/fear-and-greed",
-}
-
-# Retry decorator for yfinance API calls
-def yf_retry(func):
+# Unified retry decorator for API calls (yfinance and HTTP)
+def api_retry(func):
     return retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=5.0, min=5.0, max=45.0),
-        retry=retry_if_exception(lambda e: isinstance(e, YFRateLimitError) or
-                               any(term in str(e).lower() for term in ["rate limit", "too many requests", "temporarily blocked"]) or
-                               "429" in str(e)),
+        wait=wait_exponential(multiplier=2.0, min=2.0, max=30.0),
+        retry=retry_if_exception(lambda e:
+            isinstance(e, YFRateLimitError) or
+            (hasattr(e, 'status_code') and getattr(e, 'status_code', 0) >= 500) or
+            any(term in str(e).lower() for term in [
+                "rate limit", "too many requests", "temporarily blocked",
+                "timeout", "connection", "network", "temporary", "5", "429", "502", "503", "504"
+            ])
+        ),
         after=after_log(logger, logging.WARNING)
     )(func)
 
@@ -69,6 +63,22 @@ def create_async_client(headers: dict | None = None) -> httpx.AsyncClient:
         follow_redirects=True,
         headers=headers,
     )
+
+@api_retry
+async def fetch_json(url: str, headers: dict | None = None) -> dict:
+    """Generic JSON fetcher with retry logic."""
+    async with create_async_client(headers=headers) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.json()
+
+@api_retry
+async def fetch_text(url: str, headers: dict | None = None) -> str:
+    """Generic text fetcher with retry logic."""
+    async with create_async_client(headers=headers) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text
 
 # Utility functions
 def validate_ticker(ticker: str) -> str:
@@ -96,7 +106,7 @@ def validate_date_range(start_str: str | None, end_str: str | None) -> None:
     if start_date and end_date and start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
 
-@yf_retry
+@api_retry
 def yf_call(ticker: str, method: str, *args, **kwargs):
     """Generic yfinance API call with retry logic."""
     t = yf.Ticker(ticker)
@@ -114,20 +124,13 @@ def get_options_chain(ticker: str, expiry: str, option_type: Literal["C", "P"] |
     return pd.concat([chain.calls, chain.puts], ignore_index=True)
 
 
-def format_datetime(dt: Any) -> Any:
-    """Format datetime objects for JSON serialization, pass through other values."""
-    if hasattr(dt, 'isoformat'):
-        return dt.isoformat()
-    return dt
 
 def to_clean_csv(df: pd.DataFrame) -> str:
     """Clean DataFrame by removing empty columns and convert to CSV string."""
-    return (df
-           .dropna(axis=1, how='all')  # Drop columns with all NaN
-           .loc[:, (df != '').any()]  # Drop columns with all empty strings
-           .loc[:, (df != 0).any() | (df.dtypes == 'object')]  # Drop numeric columns with all zeros
-           .fillna('')  # Fill remaining mixed NaN values with empty strings
-           .to_csv(index=False))
+    # Chain operations more efficiently
+    mask = (df.notna().any() & (df != '').any() &
+            ((df != 0).any() | (df.dtypes == 'object')))
+    return df.loc[:, mask].fillna('').to_csv(index=False)
 
 def format_date_string(date_str: str) -> str | None:
     """Parse and format date string to YYYY-MM-DD format."""
@@ -186,23 +189,13 @@ async def get_market_movers(
     else:
         raise ValueError(f"Invalid category: {category}")
 
-    async with create_async_client(headers=YAHOO_HEADERS) as client:
-        logger.info(f"Fetching {category} ({market_session} session) from: {url}")
-        response = await client.get(url)
-        response.raise_for_status()
+    logger.info(f"Fetching {category} ({market_session} session) from: {url}")
+    response_text = await fetch_text(url, BROWSER_HEADERS)
+    tables = pd.read_html(StringIO(response_text))
+    if not tables or tables[0].empty:
+        return f"No data found for {category}"
 
-        tables = pd.read_html(StringIO(response.text))
-        if not tables:
-            raise ValueError(f"No data found for {category}")
-
-        df = tables[0]
-
-    if df.empty:
-        return ""
-
-    # Clean data
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-
+    df = tables[0].loc[:, ~tables[0].columns.str.contains('^Unnamed')]
     return to_clean_csv(df.head(count))
 
 
@@ -222,12 +215,9 @@ async def get_cnn_fear_greed_index(
 ) -> dict:
     CNN_FEAR_GREED_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 
-    async with create_async_client(headers=CNN_HEADERS) as client:
-        response = await client.get(CNN_FEAR_GREED_URL, timeout=30.0)
-        response.raise_for_status()
-        raw_data = response.json()
-        if not raw_data:
-            raise ValueError("Empty response data")
+    raw_data = await fetch_json(CNN_FEAR_GREED_URL, BROWSER_HEADERS)
+    if not raw_data:
+        raise ValueError("Empty response data")
 
     # Remove historical time series data arrays
     result = {
@@ -249,19 +239,16 @@ async def get_cnn_fear_greed_index(
 async def get_crypto_fear_greed_index() -> dict:
     CRYPTO_FEAR_GREED_URL = "https://api.alternative.me/fng/"
 
-    async with create_async_client() as client:
-        response = await client.get(CRYPTO_FEAR_GREED_URL)
-        response.raise_for_status()
-        data = response.json()
-        if "data" not in data or not data["data"]:
-            raise ValueError("Invalid response format from alternative.me API")
+    data = await fetch_json(CRYPTO_FEAR_GREED_URL)
+    if "data" not in data or not data["data"]:
+        raise ValueError("Invalid response format from alternative.me API")
 
-        current_data = data["data"][0]
-        return {
-            "value": current_data["value"],
-            "classification": current_data["value_classification"],
-            "timestamp": current_data["timestamp"]
-        }
+    current_data = data["data"][0]
+    return {
+        "value": current_data["value"],
+        "classification": current_data["value_classification"],
+        "timestamp": current_data["timestamp"]
+    }
 
 @mcp.tool()
 def get_google_trends(
@@ -299,63 +286,72 @@ def get_ticker_data(
     """Get comprehensive ticker data: metrics, calendar, news, recommendations."""
     ticker = validate_ticker(ticker)
 
-    # Get ticker info using data_fetchers with automatic retry logic
-    info = yf_call(ticker, "get_info")
-    if not info:
-        raise ValueError(f"No information available for {ticker}")
+    # Get all basic data in parallel
+    with ThreadPoolExecutor() as executor:
+        info_future = executor.submit(yf_call, ticker, "get_info")
+        calendar_future = executor.submit(yf_call, ticker, "get_calendar")
+        news_future = executor.submit(yf_call, ticker, "get_news")
 
-    essential_fields = {
-        'symbol', 'longName', 'currentPrice', 'marketCap', 'volume', 'trailingPE',
-        'forwardPE', 'dividendYield', 'beta', 'eps', 'totalRevenue', 'totalDebt',
-        'profitMargins', 'operatingMargins', 'returnOnEquity', 'returnOnAssets',
-        'revenueGrowth', 'earningsGrowth', 'bookValue', 'priceToBook',
-        'enterpriseValue', 'pegRatio', 'trailingEps', 'forwardEps'
-    }
+        info = info_future.result()
+        if not info:
+            raise ValueError(f"No information available for {ticker}")
 
-    # Basic info section - convert to structured format
-    basic_info = [
-        {"metric": key, "value": format_datetime(value)}
-        for key, value in info.items() if key in essential_fields
-    ]
+        essential_fields = {
+            'symbol', 'longName', 'currentPrice', 'marketCap', 'volume', 'trailingPE',
+            'forwardPE', 'dividendYield', 'beta', 'eps', 'totalRevenue', 'totalDebt',
+            'profitMargins', 'operatingMargins', 'returnOnEquity', 'returnOnAssets',
+            'revenueGrowth', 'earningsGrowth', 'bookValue', 'priceToBook',
+            'enterpriseValue', 'pegRatio', 'trailingEps', 'forwardEps'
+        }
 
-    result: dict[str, Any] = {"basic_info": basic_info}
-
-    # Get calendar using data_fetchers with automatic retry logic
-    calendar = yf_call(ticker, "get_calendar")
-    if calendar:
-        result["calendar"] = [
-            {"event": key, "value": format_datetime(value)}
-            for key, value in calendar.items()
+        # Basic info section - convert to structured format
+        basic_info = [
+            {"metric": key, "value": value.isoformat() if hasattr(value, 'isoformat') else value}
+            for key, value in info.items() if key in essential_fields
         ]
 
-    # Get news using data_fetchers with automatic retry logic
-    news_items = yf_call(ticker, "get_news")
-    if news_items:
-        news_items = news_items[:max_news]  # Apply limit
-        news_data = []
-        for item in news_items:
-            content = item.get("content", {})
-            raw_date = content.get("pubDate") or content.get("displayTime") or ""
+        result: dict[str, Any] = {"basic_info": basic_info}
 
-            news_data.append({
-                "date": format_date_string(raw_date),
-                "title": content.get("title") or "Untitled",
-                "source": content.get("provider", {}).get("displayName", "Unknown"),
-                "url": (content.get("canonicalUrl", {}).get("url") or
-                        content.get("clickThroughUrl", {}).get("url") or "")
-            })
+        # Process calendar
+        calendar = calendar_future.result()
+        if calendar:
+            result["calendar"] = [
+                {"event": key, "value": value.isoformat() if hasattr(value, 'isoformat') else value}
+                for key, value in calendar.items()
+            ]
 
-        result["news"] = news_data
+        # Process news
+        news_items = news_future.result()
+        if news_items:
+            news_items = news_items[:max_news]  # Apply limit
+            news_data = []
+            for item in news_items:
+                content = item.get("content", {})
+                raw_date = content.get("pubDate") or content.get("displayTime") or ""
 
-    # Get recommendations and upgrades
-    recommendations = yf_call(ticker, "get_recommendations")
-    if isinstance(recommendations, pd.DataFrame) and not recommendations.empty:
-        result["recommendations"] = to_clean_csv(recommendations.head(max_recommendations))
+                news_data.append({
+                    "date": format_date_string(raw_date),
+                    "title": content.get("title") or "Untitled",
+                    "source": content.get("provider", {}).get("displayName", "Unknown"),
+                    "url": (content.get("canonicalUrl", {}).get("url") or
+                            content.get("clickThroughUrl", {}).get("url") or "")
+                })
 
-    upgrades = yf_call(ticker, "get_upgrades_downgrades")
-    if isinstance(upgrades, pd.DataFrame) and not upgrades.empty:
-        upgrades = upgrades.sort_index(ascending=False) if hasattr(upgrades, 'sort_index') else upgrades
-        result["upgrades_downgrades"] = to_clean_csv(upgrades.head(max_upgrades))
+            result["news"] = news_data
+
+    # Get recommendations and upgrades in parallel
+    with ThreadPoolExecutor() as executor:
+        recommendations_future = executor.submit(yf_call, ticker, "get_recommendations")
+        upgrades_future = executor.submit(yf_call, ticker, "get_upgrades_downgrades")
+
+        recommendations = recommendations_future.result()
+        if isinstance(recommendations, pd.DataFrame) and not recommendations.empty:
+            result["recommendations"] = to_clean_csv(recommendations.head(max_recommendations))
+
+        upgrades = upgrades_future.result()
+        if isinstance(upgrades, pd.DataFrame) and not upgrades.empty:
+            upgrades = upgrades.sort_index(ascending=False) if hasattr(upgrades, 'sort_index') else upgrades
+            result["upgrades_downgrades"] = to_clean_csv(upgrades.head(max_upgrades))
 
     return result
 
@@ -443,40 +439,53 @@ def get_price_history(
 @mcp.tool()
 def get_financial_statements(
     ticker: str,
-    statement_type: Literal["income", "balance", "cash"] = "income",
+    statement_types: list[Literal["income", "balance", "cash"]] = ["income"],
     frequency: Literal["quarterly", "annual"] = "quarterly",
     max_periods: int = 8
-) -> str:
+) -> dict[str, str]:
+    """Get financial statements. Returns dict with statement type as key and CSV data as value."""
     ticker = validate_ticker(ticker)
 
-    @yf_retry
-    def get_statements():
+    @api_retry
+    def get_single_statement(stmt_type: str):
         t = yf.Ticker(ticker)
-        if statement_type == "income":
+        if stmt_type == "income":
             return t.quarterly_income_stmt if frequency == "quarterly" else t.income_stmt
-        elif statement_type == "balance":
+        elif stmt_type == "balance":
             return t.quarterly_balance_sheet if frequency == "quarterly" else t.balance_sheet
         else:  # cash
             return t.quarterly_cashflow if frequency == "quarterly" else t.cashflow
 
-    df = get_statements()
-    if df is None or df.empty:
-        raise ValueError(f"No {statement_type} statement data found for {ticker}")
+    # Fetch all requested statements in parallel
+    with ThreadPoolExecutor() as executor:
+        futures = {stmt_type: executor.submit(get_single_statement, stmt_type) for stmt_type in statement_types}
 
-    if len(df.columns) > max_periods:
-        df = df.iloc[:, :max_periods]
+        results = {}
+        for stmt_type, future in futures.items():
+            df = future.result()
+            if df is None or df.empty:
+                raise ValueError(f"No {stmt_type} statement data found for {ticker}")
 
-    df_reset = df.reset_index()
+            if len(df.columns) > max_periods:
+                df = df.iloc[:, :max_periods]
 
-    return to_clean_csv(df_reset)
+            df_reset = df.reset_index()
+            results[stmt_type] = to_clean_csv(df_reset)
+
+    return results
 
 @mcp.tool()
 def get_institutional_holders(ticker: str, top_n: int = 20) -> dict[str, Any]:
     """Get major institutional and mutual fund holders."""
     ticker = validate_ticker(ticker)
 
-    inst_holders = yf_call(ticker, "get_institutional_holders")
-    fund_holders = yf_call(ticker, "get_mutualfund_holders")
+    # Fetch both types in parallel
+    with ThreadPoolExecutor() as executor:
+        inst_future = executor.submit(yf_call, ticker, "get_institutional_holders")
+        fund_future = executor.submit(yf_call, ticker, "get_mutualfund_holders")
+
+        inst_holders = inst_future.result()
+        fund_holders = fund_future.result()
 
     # Limit results
     inst_holders = inst_holders.head(top_n) if isinstance(inst_holders, pd.DataFrame) else None
@@ -534,11 +543,8 @@ async def get_nasdaq_earnings_calendar(
     # Constants
     NASDAQ_EARNINGS_URL = "https://api.nasdaq.com/api/calendar/earnings"
     NASDAQ_HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.nasdaq.com/',
-        'Origin': 'https://www.nasdaq.com'
+        **BROWSER_HEADERS,
+        'Referer': 'https://www.nasdaq.com/'
     }
 
     # Set default date if not provided or validate provided date
@@ -551,48 +557,44 @@ async def get_nasdaq_earnings_calendar(
     try:
         logger.info(f"Fetching earnings for {date_str}")
 
-        async with create_async_client(headers=NASDAQ_HEADERS) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        data = await fetch_json(url, NASDAQ_HEADERS)
 
-            data = response.json()
+        if 'data' in data and data['data']:
+            earnings_data = data['data']
 
-            if 'data' in data and data['data']:
-                earnings_data = data['data']
+            if earnings_data.get('headers') and earnings_data.get('rows'):
+                headers = earnings_data['headers']
+                rows = earnings_data['rows']
 
-                if earnings_data.get('headers') and earnings_data.get('rows'):
-                    headers = earnings_data['headers']
-                    rows = earnings_data['rows']
+                # Extract column names from headers dict
+                if isinstance(headers, dict):
+                    column_names = list(headers.values())
+                    column_keys = list(headers.keys())
+                else:
+                    column_names = [h.get('label', h) if isinstance(h, dict) else str(h) for h in headers]
+                    column_keys = column_names
 
-                    # Extract column names from headers dict
-                    if isinstance(headers, dict):
-                        column_names = list(headers.values())
-                        column_keys = list(headers.keys())
-                    else:
-                        column_names = [h.get('label', h) if isinstance(h, dict) else str(h) for h in headers]
-                        column_keys = column_names
+                # Convert rows to DataFrame
+                processed_rows = []
+                for row in rows:
+                    if isinstance(row, dict):
+                        processed_row = [row.get(key, '') for key in column_keys]
+                        processed_rows.append(processed_row)
 
-                    # Convert rows to DataFrame
-                    processed_rows = []
-                    for row in rows:
-                        if isinstance(row, dict):
-                            processed_row = [row.get(key, '') for key in column_keys]
-                            processed_rows.append(processed_row)
+                if processed_rows:
+                    df = pd.DataFrame(processed_rows, columns=column_names)
+                    # Add date column at the beginning
+                    df.insert(0, 'Date', date_str)
 
-                    if processed_rows:
-                        df = pd.DataFrame(processed_rows, columns=column_names)
-                        # Add date column at the beginning
-                        df.insert(0, 'Date', date_str)
+                    # Apply limit
+                    if len(df) > limit:
+                        df = df.head(limit)
 
-                        # Apply limit
-                        if len(df) > limit:
-                            df = df.head(limit)
+                    logger.info(f"Retrieved {len(df)} earnings entries for {date_str}")
+                    return to_clean_csv(df)
 
-                        logger.info(f"Retrieved {len(df)} earnings entries for {date_str}")
-                        return to_clean_csv(df)
-
-            # No earnings data found
-            return f"No earnings announcements found for {date_str}. This could be due to weekends, holidays, or no scheduled earnings on this date."
+        # No earnings data found
+        return f"No earnings announcements found for {date_str}. This could be due to weekends, holidays, or no scheduled earnings on this date."
 
     except Exception as e:
         logger.error(f"Error fetching earnings for {date_str}: {e}")

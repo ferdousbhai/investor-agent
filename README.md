@@ -62,7 +62,7 @@ uvx "investor-agent[ta]"
 - **`get_ticker_data(ticker, max_news=5, max_recommendations=5, max_upgrades=5)`** - Comprehensive ticker report with essential field filtering and configurable limits for news, analyst recommendations, and upgrades/downgrades
 - **`get_options(ticker_symbol, num_options=10, start_date=None, end_date=None, strike_lower=None, strike_upper=None, option_type=None)`** - Options data with advanced filtering by date range (YYYY-MM-DD), strike price bounds, and option type (C=calls, P=puts)
 - **`get_price_history(ticker, period="1mo")`** - Historical OHLCV data with intelligent interval selection: daily intervals for periods ≤1y, monthly intervals for periods ≥2y to optimize data volume
-- **`get_financial_statements(ticker, statement_type="income", frequency="quarterly", max_periods=8)`** - Financial statements (income/balance/cash) with period limiting for context optimization
+- **`get_financial_statements(ticker, statement_types=["income"], frequency="quarterly", max_periods=8)`** - Financial statements with parallel fetching support. Returns dict with statement type as key
 - **`get_institutional_holders(ticker, top_n=20)`** - Major institutional and mutual fund holders data
 - **`get_earnings_history(ticker, max_entries=8)`** - Historical earnings data with configurable entry limits
 - **`get_insider_trades(ticker, max_trades=20)`** - Recent insider trading activity with configurable trade limits
