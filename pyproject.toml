@@ -32,6 +32,9 @@ classifiers = [
 ta = [
     "ta-lib>=0.6.7",
 ]
+alpaca = [
+    "alpaca-py>=0.36.2",
+]
 
 [dependency-groups]
 dev = [

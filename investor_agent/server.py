@@ -26,6 +26,15 @@ try:
 except ImportError:
     _ta_available = False
 
+# Check Alpaca availability
+try:
+    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit  # type: ignore
+    from alpaca.data.historical import StockHistoricalDataClient  # type: ignore
+    from alpaca.data.requests import StockBarsRequest  # type: ignore
+    _alpaca_available = True
+except ImportError:
+    _alpaca_available = False
+
 # Setup logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -599,6 +608,56 @@ async def get_nasdaq_earnings_calendar(
     except Exception as e:
         logger.error(f"Error fetching earnings for {date_str}: {e}")
         return f"Error retrieving earnings data for {date_str}: {str(e)}"
+
+
+# Only register the Alpaca intraday data tool if alpaca-py is available
+if _alpaca_available:
+    @mcp.tool()
+    def fetch_intraday_data(stock: str, window: int = 200) -> str:
+        """
+        Fetch 15-minute historical stock bars using Alpaca API.
+
+        Args:
+            stock: Stock ticker symbol
+            window: Number of 15-minute bars to fetch (default: 200)
+
+        Returns:
+            CSV string with timestamp and close price data in EST timezone
+        """
+        import os
+
+        try:
+            api_key = os.getenv('ALPACA_API_KEY')
+            api_secret = os.getenv('ALPACA_API_SECRET')
+
+            if not api_key or not api_secret:
+                raise ValueError("ALPACA_API_KEY and ALPACA_API_SECRET environment variables must be set")
+
+            timeframe = TimeFrame(15, TimeFrameUnit.Minute)
+            client = StockHistoricalDataClient(api_key, api_secret)
+            request = StockBarsRequest(
+                symbol_or_symbols=stock,
+                timeframe=timeframe,
+                limit=window
+            )
+
+            df_raw = client.get_stock_bars(request).df
+
+            if df_raw.empty or 'close' not in df_raw.columns:
+                raise ValueError(f"'close' column missing or data empty for {stock}")
+
+            df = df_raw['close']
+            df.index = df_raw.index.get_level_values('timestamp').tz_convert("America/New_York")
+            df = df.to_frame(name=f'{stock}')
+
+            # Convert to CSV string
+            df_reset = df.reset_index()
+            df_reset['timestamp'] = df_reset['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S %Z')
+            return df_reset.to_csv(index=False)
+
+        except Exception as e:
+            raise ValueError(f"Error fetching data for {stock}: {e}")
+
 
 # Only register the technical indicator tool if TA-Lib is available
 if _ta_available:
