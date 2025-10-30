@@ -5,19 +5,18 @@ from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from typing import Literal, Any
 
-import hishel
 import httpx
 import pandas as pd
 import yfinance as yf
+from hishel import AsyncCacheClient
 from mcp.server.fastmcp import FastMCP
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, after_log
 from yfinance.exceptions import YFRateLimitError
 
 mcp = FastMCP("Investor-Agent", dependencies=["yfinance", "pandas", "pytrends"])
 
-# Configure pandas and enable HTTP caching
+# Configure pandas
 pd.set_option('future.no_silent_downcasting', True)
-hishel.install_cache()
 
 # Check TA-Lib availability
 try:
@@ -65,9 +64,9 @@ def api_retry(func):
     )(func)
 
 # HTTP client utility
-def create_async_client(headers: dict | None = None) -> httpx.AsyncClient:
-    """Create an httpx.AsyncClient with longer timeout, automatic redirect and custom headers."""
-    return httpx.AsyncClient(
+def create_async_client(headers: dict | None = None) -> AsyncCacheClient:
+    """Create a cached async HTTP client with longer timeout, automatic redirect and custom headers."""
+    return AsyncCacheClient(
         timeout=30.0,
         follow_redirects=True,
         headers=headers,
