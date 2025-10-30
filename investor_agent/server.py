@@ -8,7 +8,7 @@ from typing import Literal, Any
 import httpx
 import pandas as pd
 import yfinance as yf
-from hishel import AsyncCacheClient
+from hishel.httpx import AsyncCacheClient
 from mcp.server.fastmcp import FastMCP
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, after_log
 from yfinance.exceptions import YFRateLimitError
