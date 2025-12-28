@@ -15,23 +15,6 @@ wheels = [
 ]
 
 [[package]]
-name = "alpaca-py"
-version = "0.43.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "msgpack" },
-    { name = "pandas" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "sseclient-py" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/08/6efa9bd8903f587698301bb139256c8ad075c54c1092b690623e207ae97e/alpaca_py-0.43.1.tar.gz", hash = "sha256:331a54c3f3724d87ed675d5a7d5f66f3e38a4470236f3f9bbecded6e27192379", size = 97902, upload-time = "2025-10-28T18:15:42.129Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/54/9b3140f976e7cf169a7ba0a6e3e0d2a0af12419006f15ff41682b733caaa/alpaca_py-0.43.1-py3-none-any.whl", hash = "sha256:153478d3653defbc9c679ed11c1970e7ea50fa90042e0c8e5391ce3a9073986e", size = 122449, upload-time = "2025-10-28T18:15:40.626Z" },
-]
-
-[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -874,6 +857,7 @@ dependencies = [
     { name = "httpx" },
     { name = "lxml" },
     { name = "mcp", extra = ["cli"] },
+    { name = "numpy" },
     { name = "pandas" },
     { name = "pytrends" },
     { name = "requests-cache" },
@@ -882,9 +866,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-alpaca = [
-    { name = "alpaca-py" },
-]
 ta = [
     { name = "ta-lib" },
 ]
@@ -897,13 +878,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alpaca-py", marker = "extra == 'alpaca'", specifier = ">=0.43.1" },
     { name = "anysqlite", specifier = ">=0.0.5" },
     { name = "hishel", specifier = ">=1.0.0" },
     { name = "html5lib", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "lxml", specifier = ">=6.0.2" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.19.0" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pytrends", specifier = ">=4.9.2" },
     { name = "requests-cache", specifier = ">=1.2.1" },
@@ -911,7 +892,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "yfinance", extras = ["nospam"], specifier = ">=0.2.66" },
 ]
-provides-extras = ["alpaca", "ta"]
+provides-extras = ["ta"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2389,15 +2370,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/42/6f/22ed6e33f8a9e76ca0a412405f31abb844b779d52c5f96660766edcd737c/sse_starlette-3.0.2.tar.gz", hash = "sha256:ccd60b5765ebb3584d0de2d7a6e4f745672581de4f5005ab31c3a25d10b52b3a", size = 20985, upload-time = "2025-07-27T09:07:44.565Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/10/c78f463b4ef22eef8491f218f692be838282cd65480f6e423d7730dfd1fb/sse_starlette-3.0.2-py3-none-any.whl", hash = "sha256:16b7cbfddbcd4eaca11f7b586f3b8a080f1afe952c15813455b162edea619e5a", size = 11297, upload-time = "2025-07-27T09:07:43.268Z" },
-]
-
-[[package]]
-name = "sseclient-py"
-version = "1.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e8/ed/3df5ab8bb0c12f86c28d0cadb11ed1de44a92ed35ce7ff4fd5518a809325/sseclient-py-1.8.0.tar.gz", hash = "sha256:c547c5c1a7633230a38dc599a21a2dc638f9b5c297286b48b46b935c71fac3e8", size = 7791, upload-time = "2023-09-01T19:39:20.45Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/58/97655efdfeb5b4eeab85b1fc5d3fa1023661246c2ab2a26ea8e47402d4f2/sseclient_py-1.8.0-py2.py3-none-any.whl", hash = "sha256:4ecca6dc0b9f963f8384e9d7fd529bf93dd7d708144c4fb5da0e0a1a926fee83", size = 8828, upload-time = "2023-09-01T19:39:17.627Z" },
 ]
 
 [[package]]

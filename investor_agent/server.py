@@ -25,15 +25,6 @@ try:
 except ImportError:
     _ta_available = False
 
-# Check Alpaca availability
-try:
-    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit  # type: ignore
-    from alpaca.data.historical import StockHistoricalDataClient  # type: ignore
-    from alpaca.data.requests import StockBarsRequest  # type: ignore
-    _alpaca_available = True
-except ImportError:
-    _alpaca_available = False
-
 # Setup logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -42,9 +33,31 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)]
 )
 
-# Minimal HTTP Headers - only essential ones
+# =============================================================================
+# Constants
+# =============================================================================
+
+# HTTP Headers for browser-like requests
 BROWSER_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
+
+# Yahoo Finance URLs
+YAHOO_MOST_ACTIVE_URL = "https://finance.yahoo.com/most-active"
+YAHOO_PRE_MARKET_URL = "https://finance.yahoo.com/markets/stocks/pre-market"
+YAHOO_AFTER_HOURS_URL = "https://finance.yahoo.com/markets/stocks/after-hours"
+YAHOO_GAINERS_URL = "https://finance.yahoo.com/gainers"
+YAHOO_LOSERS_URL = "https://finance.yahoo.com/losers"
+
+# Sentiment/Market Data APIs
+CNN_FEAR_GREED_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+CRYPTO_FEAR_GREED_URL = "https://api.alternative.me/fng/"
+NASDAQ_EARNINGS_URL = "https://api.nasdaq.com/api/calendar/earnings"
+
+# Nasdaq-specific headers
+NASDAQ_HEADERS = {
+    **BROWSER_HEADERS,
+    'Referer': 'https://www.nasdaq.com/'
 }
 
 # Unified retry decorator for API calls (yfinance and HTTP)
@@ -167,35 +180,38 @@ async def get_market_movers(
     count: int = 25,
     market_session: Literal["regular", "pre-market", "after-hours"] = "regular"
 ) -> str:
-    """Get market movers. market_session only applies to 'most-active'."""
-    # URLs for different market movers categories
-    YAHOO_MOST_ACTIVE_URL = "https://finance.yahoo.com/most-active"
-    YAHOO_PRE_MARKET_URL = "https://finance.yahoo.com/markets/stocks/pre-market"
-    YAHOO_AFTER_HOURS_URL = "https://finance.yahoo.com/markets/stocks/after-hours"
-    YAHOO_GAINERS_URL = "https://finance.yahoo.com/gainers"
-    YAHOO_LOSERS_URL = "https://finance.yahoo.com/losers"
+    """Get top market movers from Yahoo Finance.
 
-    # Validate and constrain count
+    Args:
+        category: Type of movers - "gainers" (top % gainers), "losers" (top % losers),
+                  or "most-active" (highest volume)
+        count: Number of stocks to return (1-100, default 25)
+        market_session: Trading session - "regular", "pre-market", or "after-hours"
+                       (only applies to "most-active" category)
+
+    Returns:
+        CSV with Symbol, Name, Price, Change, % Change, Volume, etc.
+    """
     count = min(max(count, 1), 100)
-
-    # Build URLs with direct lookups to avoid dictionary recreation
     params = f"?count={count}&offset=0"
 
-    if category == "most-active":
-        if market_session == "regular":
-            url = YAHOO_MOST_ACTIVE_URL + params
-        elif market_session == "pre-market":
-            url = YAHOO_PRE_MARKET_URL + params
-        elif market_session == "after-hours":
-            url = YAHOO_AFTER_HOURS_URL + params
-        else:
-            raise ValueError(f"Invalid market session: {market_session}")
-    elif category == "gainers":
-        url = YAHOO_GAINERS_URL + params
-    elif category == "losers":
-        url = YAHOO_LOSERS_URL + params
-    else:
-        raise ValueError(f"Invalid category: {category}")
+    # Map category and session to URL
+    url_map = {
+        ("most-active", "regular"): YAHOO_MOST_ACTIVE_URL,
+        ("most-active", "pre-market"): YAHOO_PRE_MARKET_URL,
+        ("most-active", "after-hours"): YAHOO_AFTER_HOURS_URL,
+        ("gainers", "regular"): YAHOO_GAINERS_URL,
+        ("losers", "regular"): YAHOO_LOSERS_URL,
+    }
+
+    # For gainers/losers, ignore market_session
+    key = (category, market_session if category == "most-active" else "regular")
+    base_url = url_map.get(key)
+
+    if not base_url:
+        raise ValueError(f"Invalid category '{category}' or market_session '{market_session}'")
+
+    url = base_url + params
 
     logger.info(f"Fetching {category} ({market_session} session) from: {url}")
     response_text = await fetch_text(url, BROWSER_HEADERS)
@@ -221,8 +237,22 @@ async def get_cnn_fear_greed_index(
         ]
     ] | None = None
 ) -> dict:
-    CNN_FEAR_GREED_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+    """Get CNN Fear & Greed Index with component indicators.
 
+    The Fear & Greed Index measures market sentiment on a scale of 0-100:
+    - 0-25: Extreme Fear
+    - 25-45: Fear
+    - 45-55: Neutral
+    - 55-75: Greed
+    - 75-100: Extreme Greed
+
+    Args:
+        indicators: Optional list of specific indicators to return.
+                   If None, returns all available indicators.
+
+    Returns:
+        Dict with indicator scores, ratings, and metadata.
+    """
     raw_data = await fetch_json(CNN_FEAR_GREED_URL, BROWSER_HEADERS)
     if not raw_data:
         raise ValueError("Empty response data")
@@ -245,8 +275,18 @@ async def get_cnn_fear_greed_index(
 
 @mcp.tool()
 async def get_crypto_fear_greed_index() -> dict:
-    CRYPTO_FEAR_GREED_URL = "https://api.alternative.me/fng/"
+    """Get Crypto Fear & Greed Index from Alternative.me.
 
+    Measures crypto market sentiment on a scale of 0-100:
+    - 0-25: Extreme Fear (potential buying opportunity)
+    - 25-45: Fear
+    - 45-55: Neutral
+    - 55-75: Greed
+    - 75-100: Extreme Greed (potential correction ahead)
+
+    Returns:
+        Dict with value (0-100), classification, and timestamp.
+    """
     data = await fetch_json(CRYPTO_FEAR_GREED_URL)
     if "data" not in data or not data["data"]:
         raise ValueError("Invalid response format from alternative.me API")
@@ -263,7 +303,18 @@ def get_google_trends(
     keywords: list[str],
     period_days: int = 7
 ) -> str:
-    """Get Google Trends relative search interest for specified keywords."""
+    """Get Google Trends relative search interest for market-related keywords.
+
+    Useful for gauging retail investor interest in stocks, sectors, or themes.
+    Values are relative (0-100) where 100 = peak popularity in the period.
+
+    Args:
+        keywords: List of search terms (e.g., ["NVDA", "AI stocks", "recession"])
+        period_days: Lookback period - 1, 7, 30, 90, 365 days (default 7)
+
+    Returns:
+        CSV with date and relative search interest for each keyword.
+    """
     from pytrends.request import TrendReq
 
     logger.info(f"Fetching Google Trends data for {period_days} days")
@@ -291,7 +342,23 @@ def get_ticker_data(
     max_recommendations: int = 5,
     max_upgrades: int = 5
 ) -> dict[str, Any]:
-    """Get comprehensive ticker data: metrics, calendar, news, recommendations."""
+    """Get comprehensive stock data including fundamentals, news, and analyst ratings.
+
+    This is the primary tool for researching a specific stock. Returns:
+    - Basic info: price, market cap, P/E, dividend yield, margins, etc.
+    - Calendar: upcoming earnings, ex-dividend dates
+    - Recent news articles with sources and URLs
+    - Analyst recommendations and upgrades/downgrades
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL", "MSFT")
+        max_news: Maximum news articles to return (default 5)
+        max_recommendations: Maximum analyst recommendations (default 5)
+        max_upgrades: Maximum upgrades/downgrades to return (default 5)
+
+    Returns:
+        Dict with basic_info, calendar, news, recommendations, upgrades_downgrades.
+    """
     ticker = validate_ticker(ticker)
 
     # Get all basic data in parallel
@@ -373,7 +440,22 @@ def get_options(
     strike_upper: float | None = None,
     option_type: Literal["C", "P"] | None = None,
 ) -> str:
-    """Get options data. Dates: YYYY-MM-DD. Type: C=calls, P=puts."""
+    """Get options chain data with filtering capabilities.
+
+    Returns options sorted by open interest and volume (most liquid first).
+
+    Args:
+        ticker_symbol: Stock symbol (e.g., "AAPL")
+        num_options: Maximum options to return (default 10)
+        start_date: Filter expiration dates on/after this date (YYYY-MM-DD)
+        end_date: Filter expiration dates on/before this date (YYYY-MM-DD)
+        strike_lower: Minimum strike price filter
+        strike_upper: Maximum strike price filter
+        option_type: "C" for calls only, "P" for puts only, None for both
+
+    Returns:
+        CSV with strike, expiry, bid, ask, volume, openInterest, impliedVolatility.
+    """
     ticker_symbol = validate_ticker(ticker_symbol)
 
     try:
@@ -430,7 +512,20 @@ def get_price_history(
     ticker: str,
     period: Literal["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"] = "1mo"
 ) -> str:
-    """Get historical OHLCV data with smart interval selection."""
+    """Get historical OHLCV (Open, High, Low, Close, Volume) price data.
+
+    Automatically selects appropriate data interval:
+    - Daily data for periods up to 1 year
+    - Monthly data for longer periods (2y, 5y, 10y, max)
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL")
+        period: Lookback period - "1d", "5d", "1mo", "3mo", "6mo", "1y",
+                "2y", "5y", "10y", "ytd", or "max"
+
+    Returns:
+        CSV with Date, Open, High, Low, Close, Volume, Dividends, Stock Splits.
+    """
     ticker = validate_ticker(ticker)
 
     interval = "1mo" if period in ["2y", "5y", "10y", "max"] else "1d"
@@ -451,7 +546,18 @@ def get_financial_statements(
     frequency: Literal["quarterly", "annual"] = "quarterly",
     max_periods: int = 8
 ) -> dict[str, str]:
-    """Get financial statements. Returns dict with statement type as key and CSV data as value."""
+    """Get financial statements (income, balance sheet, cash flow).
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL")
+        statement_types: List of statements - "income", "balance", "cash"
+        frequency: "quarterly" or "annual" data
+        max_periods: Maximum number of periods to return (default 8)
+
+    Returns:
+        Dict mapping statement type to CSV data with line items as rows,
+        periods as columns.
+    """
     ticker = validate_ticker(ticker)
 
     @api_retry
@@ -484,7 +590,19 @@ def get_financial_statements(
 
 @mcp.tool()
 def get_institutional_holders(ticker: str, top_n: int = 20) -> dict[str, Any]:
-    """Get major institutional and mutual fund holders."""
+    """Get major institutional and mutual fund holders.
+
+    Shows who the big money investors are - useful for understanding
+    institutional interest and potential support levels.
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL")
+        top_n: Number of top holders to return (default 20)
+
+    Returns:
+        Dict with institutional_holders and mutual_fund_holders CSVs,
+        including holder name, shares held, value, and % of shares outstanding.
+    """
     ticker = validate_ticker(ticker)
 
     # Fetch both types in parallel
@@ -514,6 +632,17 @@ def get_institutional_holders(ticker: str, top_n: int = 20) -> dict[str, Any]:
 
 @mcp.tool()
 def get_earnings_history(ticker: str, max_entries: int = 8) -> str:
+    """Get historical earnings data with EPS estimates vs actuals.
+
+    Useful for analyzing earnings surprise patterns and estimate accuracy.
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL")
+        max_entries: Maximum quarters to return (default 8)
+
+    Returns:
+        CSV with date, EPS estimate, EPS actual, and surprise percentage.
+    """
     ticker = validate_ticker(ticker)
 
     earnings_history = yf_call(ticker, "get_earnings_history")
@@ -527,6 +656,18 @@ def get_earnings_history(ticker: str, max_entries: int = 8) -> str:
 
 @mcp.tool()
 def get_insider_trades(ticker: str, max_trades: int = 20) -> str:
+    """Get recent insider trading transactions.
+
+    Shows buys/sells by executives, directors, and major shareholders.
+    Insider buying can signal confidence; heavy selling may warrant attention.
+
+    Args:
+        ticker: Stock symbol (e.g., "AAPL")
+        max_trades: Maximum transactions to return (default 20)
+
+    Returns:
+        CSV with insider name, title, transaction type, shares, value, and date.
+    """
     ticker = validate_ticker(ticker)
 
     trades = yf_call(ticker, "get_insider_transactions")
@@ -543,19 +684,19 @@ async def get_nasdaq_earnings_calendar(
     date: str | None = None,
     limit: int = 100
 ) -> str:
-    """Get earnings calendar for a specific date using Nasdaq API.
-    Date in YYYY-MM-DD format (defaults to today)
-    Returns CSV with: Date, Symbol, Company Name, EPS, % Surprise, Market Cap, etc.
-    Note: Single date only - call multiple times for date ranges.
-    """
-    # Constants
-    NASDAQ_EARNINGS_URL = "https://api.nasdaq.com/api/calendar/earnings"
-    NASDAQ_HEADERS = {
-        **BROWSER_HEADERS,
-        'Referer': 'https://www.nasdaq.com/'
-    }
+    """Get earnings calendar for a specific date from Nasdaq.
 
-    # Set default date if not provided or validate provided date
+    Use this to find which companies are reporting earnings on a given day.
+    Helpful for planning trades around earnings announcements.
+
+    Args:
+        date: Target date in YYYY-MM-DD format (defaults to today)
+        limit: Maximum companies to return (default 100)
+
+    Returns:
+        CSV with Date, Symbol, Company Name, EPS estimate, time (BMO/AMC), etc.
+        Note: Call multiple times for date ranges.
+    """
     today = datetime.date.today()
     target_date = validate_date(date) if date else today
 
@@ -609,79 +750,48 @@ async def get_nasdaq_earnings_calendar(
         return f"Error retrieving earnings data for {date_str}: {str(e)}"
 
 
-# Only register the Alpaca intraday data tool if alpaca-py is available
-if _alpaca_available:
-    @mcp.tool()
-    def fetch_intraday_data(stock: str, window: int = 200) -> str:
-        """
-        Fetch 15-minute historical stock bars using Alpaca API.
+# =============================================================================
+# Optional Tools (require additional dependencies)
+# =============================================================================
 
-        Args:
-            stock: Stock ticker symbol
-            window: Number of 15-minute bars to fetch (default: 200)
-
-        Returns:
-            CSV string with timestamp and close price data in EST timezone
-        """
-        import os
-
-        try:
-            api_key = os.getenv('ALPACA_API_KEY')
-            api_secret = os.getenv('ALPACA_API_SECRET')
-
-            if not api_key or not api_secret:
-                raise ValueError("ALPACA_API_KEY and ALPACA_API_SECRET environment variables must be set")
-
-            timeframe = TimeFrame(15, TimeFrameUnit.Minute)
-            client = StockHistoricalDataClient(api_key, api_secret)
-            request = StockBarsRequest(
-                symbol_or_symbols=stock,
-                timeframe=timeframe,
-                limit=window
-            )
-
-            df_raw = client.get_stock_bars(request).df
-
-            if df_raw.empty or 'close' not in df_raw.columns:
-                raise ValueError(f"'close' column missing or data empty for {stock}")
-
-            df = df_raw['close']
-            df.index = df_raw.index.get_level_values('timestamp').tz_convert("America/New_York")
-            df = df.to_frame(name=f'{stock}')
-
-            # Convert to CSV string
-            df_reset = df.reset_index()
-            df_reset['timestamp'] = df_reset['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S %Z')
-            return df_reset.to_csv(index=False)
-
-        except Exception as e:
-            raise ValueError(f"Error fetching data for {stock}: {e}")
-
-
-# Only register the technical indicator tool if TA-Lib is available
+# Technical Analysis (requires TA-Lib: uvx "investor-agent[ta]")
 if _ta_available:
     @mcp.tool()
     def calculate_technical_indicator(
         ticker: str,
         indicator: Literal["SMA", "EMA", "RSI", "MACD", "BBANDS"],
         period: Literal["1mo", "3mo", "6mo", "1y", "2y", "5y"] = "1y",
-        timeperiod: int = 14,  # Default timeperiod for SMA, EMA, RSI
-        fastperiod: int = 12,  # Default for MACD fast EMA
-        slowperiod: int = 26,  # Default for MACD slow EMA
-        signalperiod: int = 9,   # Default for MACD signal line
-        nbdev: int = 2,        # Default standard deviation for BBANDS
-        matype: int = 0,       # MA type: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3
-        num_results: int = 100  # Number of recent results to return
+        timeperiod: int = 14,
+        fastperiod: int = 12,
+        slowperiod: int = 26,
+        signalperiod: int = 9,
+        nbdev: int = 2,
+        matype: int = 0,
+        num_results: int = 100
     ) -> dict[str, Any]:
-        """Calculate technical indicators for stock analysis.
+        """Calculate technical indicators using TA-Lib (requires optional dependency).
 
-        matype values: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3
+        Available indicators:
+        - SMA: Simple Moving Average (trend following)
+        - EMA: Exponential Moving Average (faster trend response)
+        - RSI: Relative Strength Index (overbought/oversold, 70/30 thresholds)
+        - MACD: Moving Average Convergence Divergence (momentum + trend)
+        - BBANDS: Bollinger Bands (volatility + mean reversion)
 
-        Returns dictionary with indicator-specific keys:
-        - SMA/EMA: {"sma"/"ema": Series}
-        - RSI: {"rsi": Series}
-        - MACD: {"macd": Series, "signal": Series, "histogram": Series}
-        - BBANDS: {"upper_band": Series, "middle_band": Series, "lower_band": Series}
+        Args:
+            ticker: Stock symbol (e.g., "AAPL")
+            indicator: Technical indicator to calculate
+            period: Historical data period (default "1y")
+            timeperiod: Lookback period for SMA/EMA/RSI/BBANDS (default 14)
+            fastperiod: MACD fast EMA period (default 12)
+            slowperiod: MACD slow EMA period (default 26)
+            signalperiod: MACD signal line period (default 9)
+            nbdev: Bollinger Bands standard deviations (default 2)
+            matype: Moving average type for BBANDS (0=SMA, 1=EMA, etc.)
+            num_results: Number of recent data points to return (default 100)
+
+        Returns:
+            Dict with price_data CSV and indicator_data CSV.
         """
         import numpy as np
         from talib import MA_Type  # type: ignore

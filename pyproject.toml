@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anysqlite>=0.0.5",
     "hishel>=1.0.0",
+    "numpy>=2.0",
     "html5lib>=1.1",
     "httpx>=0.28.1",
     "lxml>=6.0.2",
@@ -20,7 +21,7 @@ dependencies = [
 authors = [
     { name = "Ferdous", email = "ferdous@hey.com" }
 ]
-keywords = ["investment", "finance", "trading", "agent", "mcp", "model context protocol", "broker", "robinhood", "wallstreetbets"]
+keywords = ["investment", "finance", "trading", "mcp", "model context protocol", "stock market", "financial analysis", "yfinance", "technical analysis"]
 classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: End Users/Desktop",
@@ -32,9 +33,6 @@ classifiers = [
 [project.optional-dependencies]
 ta = [
     "ta-lib>=0.6.8",
-]
-alpaca = [
-    "alpaca-py>=0.43.1",
 ]
 
 [dependency-groups]
