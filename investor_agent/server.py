@@ -180,18 +180,7 @@ async def get_market_movers(
     count: int = 25,
     market_session: Literal["regular", "pre-market", "after-hours"] = "regular"
 ) -> str:
-    """Get top market movers from Yahoo Finance.
-
-    Args:
-        category: Type of movers - "gainers" (top % gainers), "losers" (top % losers),
-                  or "most-active" (highest volume)
-        count: Number of stocks to return (1-100, default 25)
-        market_session: Trading session - "regular", "pre-market", or "after-hours"
-                       (only applies to "most-active" category)
-
-    Returns:
-        CSV with Symbol, Name, Price, Change, % Change, Volume, etc.
-    """
+    """market_session only applies to most-active category."""
     count = min(max(count, 1), 100)
     params = f"?count={count}&offset=0"
 
@@ -237,22 +226,7 @@ async def get_cnn_fear_greed_index(
         ]
     ] | None = None
 ) -> dict:
-    """Get CNN Fear & Greed Index with component indicators.
-
-    The Fear & Greed Index measures market sentiment on a scale of 0-100:
-    - 0-25: Extreme Fear
-    - 25-45: Fear
-    - 45-55: Neutral
-    - 55-75: Greed
-    - 75-100: Extreme Greed
-
-    Args:
-        indicators: Optional list of specific indicators to return.
-                   If None, returns all available indicators.
-
-    Returns:
-        Dict with indicator scores, ratings, and metadata.
-    """
+    """Scale: 0-25 Extreme Fear, 25-45 Fear, 45-55 Neutral, 55-75 Greed, 75-100 Extreme Greed."""
     raw_data = await fetch_json(CNN_FEAR_GREED_URL, BROWSER_HEADERS)
     if not raw_data:
         raise ValueError("Empty response data")
@@ -275,18 +249,7 @@ async def get_cnn_fear_greed_index(
 
 @mcp.tool()
 async def get_crypto_fear_greed_index() -> dict:
-    """Get Crypto Fear & Greed Index from Alternative.me.
-
-    Measures crypto market sentiment on a scale of 0-100:
-    - 0-25: Extreme Fear (potential buying opportunity)
-    - 25-45: Fear
-    - 45-55: Neutral
-    - 55-75: Greed
-    - 75-100: Extreme Greed (potential correction ahead)
-
-    Returns:
-        Dict with value (0-100), classification, and timestamp.
-    """
+    """Scale: 0-25 Extreme Fear, 25-45 Fear, 45-55 Neutral, 55-75 Greed, 75-100 Extreme Greed."""
     data = await fetch_json(CRYPTO_FEAR_GREED_URL)
     if "data" not in data or not data["data"]:
         raise ValueError("Invalid response format from alternative.me API")
@@ -303,18 +266,7 @@ def get_google_trends(
     keywords: list[str],
     period_days: int = 7
 ) -> str:
-    """Get Google Trends relative search interest for market-related keywords.
-
-    Useful for gauging retail investor interest in stocks, sectors, or themes.
-    Values are relative (0-100) where 100 = peak popularity in the period.
-
-    Args:
-        keywords: List of search terms (e.g., ["NVDA", "AI stocks", "recession"])
-        period_days: Lookback period - 1, 7, 30, 90, 365 days (default 7)
-
-    Returns:
-        CSV with date and relative search interest for each keyword.
-    """
+    """Values are relative 0-100 where 100 = peak popularity in the period."""
     from pytrends.request import TrendReq
 
     logger.info(f"Fetching Google Trends data for {period_days} days")
@@ -342,23 +294,7 @@ def get_ticker_data(
     max_recommendations: int = 5,
     max_upgrades: int = 5
 ) -> dict[str, Any]:
-    """Get comprehensive stock data including fundamentals, news, and analyst ratings.
-
-    This is the primary tool for researching a specific stock. Returns:
-    - Basic info: price, market cap, P/E, dividend yield, margins, etc.
-    - Calendar: upcoming earnings, ex-dividend dates
-    - Recent news articles with sources and URLs
-    - Analyst recommendations and upgrades/downgrades
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL", "MSFT")
-        max_news: Maximum news articles to return (default 5)
-        max_recommendations: Maximum analyst recommendations (default 5)
-        max_upgrades: Maximum upgrades/downgrades to return (default 5)
-
-    Returns:
-        Dict with basic_info, calendar, news, recommendations, upgrades_downgrades.
-    """
+    """Returns basic_info, calendar, news, recommendations, upgrades_downgrades."""
     ticker = validate_ticker(ticker)
 
     # Get all basic data in parallel
@@ -440,22 +376,7 @@ def get_options(
     strike_upper: float | None = None,
     option_type: Literal["C", "P"] | None = None,
 ) -> str:
-    """Get options chain data with filtering capabilities.
-
-    Returns options sorted by open interest and volume (most liquid first).
-
-    Args:
-        ticker_symbol: Stock symbol (e.g., "AAPL")
-        num_options: Maximum options to return (default 10)
-        start_date: Filter expiration dates on/after this date (YYYY-MM-DD)
-        end_date: Filter expiration dates on/before this date (YYYY-MM-DD)
-        strike_lower: Minimum strike price filter
-        strike_upper: Maximum strike price filter
-        option_type: "C" for calls only, "P" for puts only, None for both
-
-    Returns:
-        CSV with strike, expiry, bid, ask, volume, openInterest, impliedVolatility.
-    """
+    """Dates filter expiration. Sorted by liquidity (open interest, volume)."""
     ticker_symbol = validate_ticker(ticker_symbol)
 
     try:
@@ -512,20 +433,7 @@ def get_price_history(
     ticker: str,
     period: Literal["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"] = "1mo"
 ) -> str:
-    """Get historical OHLCV (Open, High, Low, Close, Volume) price data.
-
-    Automatically selects appropriate data interval:
-    - Daily data for periods up to 1 year
-    - Monthly data for longer periods (2y, 5y, 10y, max)
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL")
-        period: Lookback period - "1d", "5d", "1mo", "3mo", "6mo", "1y",
-                "2y", "5y", "10y", "ytd", or "max"
-
-    Returns:
-        CSV with Date, Open, High, Low, Close, Volume, Dividends, Stock Splits.
-    """
+    """Daily bars for <=1y, monthly bars for longer periods."""
     ticker = validate_ticker(ticker)
 
     interval = "1mo" if period in ["2y", "5y", "10y", "max"] else "1d"
@@ -546,18 +454,7 @@ def get_financial_statements(
     frequency: Literal["quarterly", "annual"] = "quarterly",
     max_periods: int = 8
 ) -> dict[str, str]:
-    """Get financial statements (income, balance sheet, cash flow).
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL")
-        statement_types: List of statements - "income", "balance", "cash"
-        frequency: "quarterly" or "annual" data
-        max_periods: Maximum number of periods to return (default 8)
-
-    Returns:
-        Dict mapping statement type to CSV data with line items as rows,
-        periods as columns.
-    """
+    """Returns dict mapping statement type to CSV (line items as rows, periods as columns)."""
     ticker = validate_ticker(ticker)
 
     @api_retry
@@ -590,19 +487,7 @@ def get_financial_statements(
 
 @mcp.tool()
 def get_institutional_holders(ticker: str, top_n: int = 20) -> dict[str, Any]:
-    """Get major institutional and mutual fund holders.
-
-    Shows who the big money investors are - useful for understanding
-    institutional interest and potential support levels.
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL")
-        top_n: Number of top holders to return (default 20)
-
-    Returns:
-        Dict with institutional_holders and mutual_fund_holders CSVs,
-        including holder name, shares held, value, and % of shares outstanding.
-    """
+    """Returns institutional_holders and mutual_fund_holders CSVs."""
     ticker = validate_ticker(ticker)
 
     # Fetch both types in parallel
@@ -632,17 +517,7 @@ def get_institutional_holders(ticker: str, top_n: int = 20) -> dict[str, Any]:
 
 @mcp.tool()
 def get_earnings_history(ticker: str, max_entries: int = 8) -> str:
-    """Get historical earnings data with EPS estimates vs actuals.
-
-    Useful for analyzing earnings surprise patterns and estimate accuracy.
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL")
-        max_entries: Maximum quarters to return (default 8)
-
-    Returns:
-        CSV with date, EPS estimate, EPS actual, and surprise percentage.
-    """
+    """EPS estimates vs actuals with surprise percentage."""
     ticker = validate_ticker(ticker)
 
     earnings_history = yf_call(ticker, "get_earnings_history")
@@ -656,18 +531,7 @@ def get_earnings_history(ticker: str, max_entries: int = 8) -> str:
 
 @mcp.tool()
 def get_insider_trades(ticker: str, max_trades: int = 20) -> str:
-    """Get recent insider trading transactions.
-
-    Shows buys/sells by executives, directors, and major shareholders.
-    Insider buying can signal confidence; heavy selling may warrant attention.
-
-    Args:
-        ticker: Stock symbol (e.g., "AAPL")
-        max_trades: Maximum transactions to return (default 20)
-
-    Returns:
-        CSV with insider name, title, transaction type, shares, value, and date.
-    """
+    """Buys/sells by executives and directors."""
     ticker = validate_ticker(ticker)
 
     trades = yf_call(ticker, "get_insider_transactions")
@@ -684,19 +548,7 @@ async def get_nasdaq_earnings_calendar(
     date: str | None = None,
     limit: int = 100
 ) -> str:
-    """Get earnings calendar for a specific date from Nasdaq.
-
-    Use this to find which companies are reporting earnings on a given day.
-    Helpful for planning trades around earnings announcements.
-
-    Args:
-        date: Target date in YYYY-MM-DD format (defaults to today)
-        limit: Maximum companies to return (default 100)
-
-    Returns:
-        CSV with Date, Symbol, Company Name, EPS estimate, time (BMO/AMC), etc.
-        Note: Call multiple times for date ranges.
-    """
+    """Single date only (defaults to today). Call multiple times for date ranges."""
     today = datetime.date.today()
     target_date = validate_date(date) if date else today
 
@@ -769,30 +621,7 @@ if _ta_available:
         matype: int = 0,
         num_results: int = 100
     ) -> dict[str, Any]:
-        """Calculate technical indicators using TA-Lib (requires optional dependency).
-
-        Available indicators:
-        - SMA: Simple Moving Average (trend following)
-        - EMA: Exponential Moving Average (faster trend response)
-        - RSI: Relative Strength Index (overbought/oversold, 70/30 thresholds)
-        - MACD: Moving Average Convergence Divergence (momentum + trend)
-        - BBANDS: Bollinger Bands (volatility + mean reversion)
-
-        Args:
-            ticker: Stock symbol (e.g., "AAPL")
-            indicator: Technical indicator to calculate
-            period: Historical data period (default "1y")
-            timeperiod: Lookback period for SMA/EMA/RSI/BBANDS (default 14)
-            fastperiod: MACD fast EMA period (default 12)
-            slowperiod: MACD slow EMA period (default 26)
-            signalperiod: MACD signal line period (default 9)
-            nbdev: Bollinger Bands standard deviations (default 2)
-            matype: Moving average type for BBANDS (0=SMA, 1=EMA, etc.)
-            num_results: Number of recent data points to return (default 100)
-
-        Returns:
-            Dict with price_data CSV and indicator_data CSV.
-        """
+        """RSI: 70=overbought, 30=oversold. MACD params: fast/slow/signal periods. BBANDS: nbdev=std devs, matype 0=SMA 1=EMA."""
         import numpy as np
         from talib import MA_Type  # type: ignore
 
