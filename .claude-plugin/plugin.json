@@ -1,0 +1,20 @@
+{
+  "name": "investor",
+  "version": "1.6.0",
+  "description": "Financial analysis tools for stock research, market sentiment, and investment decisions",
+  "author": {
+    "name": "Ferdous",
+    "email": "ferdous@hey.com"
+  },
+  "repository": "https://github.com/ferdousbhai/investor-agent",
+  "license": "MIT",
+  "keywords": ["finance", "stocks", "investing", "market-analysis", "trading"],
+  "commands": "./commands/",
+  "skills": "./skills/",
+  "mcpServers": {
+    "investor-agent": {
+      "command": "uvx",
+      "args": ["investor-agent"]
+    }
+  }
+}
