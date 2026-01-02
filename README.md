@@ -17,7 +17,6 @@ The **investor-agent** is a Model Context Protocol (MCP) server that provides co
 - **Earnings Calendar:** Upcoming earnings announcements with date filtering
 - **Market Sentiment:** CNN Fear & Greed Index, Crypto Fear & Greed Index, and Google Trends sentiment analysis
 - **Technical Analysis:** SMA, EMA, RSI, MACD, BBANDS indicators (optional)
-- **Intraday Data:** 15-minute historical stock bars via Alpaca API (optional)
 
 The server integrates with [yfinance](https://pypi.org/project/yfinance/) for market data and automatically optimizes data volume for better performance.
 
@@ -42,7 +41,6 @@ This multi-layered approach ensures reliable data delivery while respecting API 
 ### Optional Dependencies
 
 - **TA-Lib C Library:** Required for technical indicators. Follow [official installation instructions](https://ta-lib.org/install/).
-- **Alpaca API:** Required for intraday stock data. Get free API keys at [Alpaca Markets](https://alpaca.markets/).
 
 ## Installation
 
@@ -54,12 +52,6 @@ uvx investor-agent
 
 # With technical indicators (requires TA-Lib)
 uvx "investor-agent[ta]"
-
-# With Alpaca intraday data (requires Alpaca API keys)
-uvx "investor-agent[alpaca]"
-
-# With all optional features
-uvx "investor-agent[ta,alpaca]"
 ```
 
 ## Tools
@@ -74,7 +66,6 @@ uvx "investor-agent[ta,alpaca]"
 - **`get_earnings_history(ticker, max_entries=8)`** - Historical earnings data with configurable entry limits
 - **`get_insider_trades(ticker, max_trades=20)`** - Recent insider trading activity with configurable trade limits
 - **`get_nasdaq_earnings_calendar(date=None, limit=100)`** - Upcoming earnings announcements using Nasdaq API (YYYY-MM-DD format, defaults to today).
-- **`fetch_intraday_data(stock, window=200)`** - Fetch 15-minute historical stock bars using Alpaca API. Returns CSV string with timestamp and close price data in EST timezone. Requires `investor-agent[alpaca]` installation and ALPACA_API_KEY/ALPACA_API_SECRET environment variables.
 
 ### Market Sentiment
 - **`get_cnn_fear_greed_index(indicators=None)`** - CNN Fear & Greed Index with selective indicator filtering. Available indicators: fear_and_greed, fear_and_greed_historical, put_call_options, market_volatility_vix, market_volatility_vix_50, junk_bond_demand, safe_haven_demand
