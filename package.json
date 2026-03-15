@@ -13,7 +13,7 @@
   "dependencies": {
     "@cloudflare/codemode": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "agents": "^0.5.0",
+    "agents": "^0.7.0",
     "papaparse": "^5.5.0",
     "trading-signals": "^7.4.0",
     "yahoo-finance2": "^3.13.0",

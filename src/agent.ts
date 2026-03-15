@@ -367,12 +367,19 @@ export class InvestorAgent extends McpAgent<Env> {
 
     this.server.tool(
       "codemode",
-      `Execute JavaScript code to orchestrate investor research tools in a single call. All functions are available on the \`codemode\` object and accept a single argument object.\n\n${TYPES_DEF}`,
+      `Execute JavaScript code to orchestrate investor research tools in a single call. All functions are available on the \`codemode\` object and accept a single argument object.
+
+IMPORTANT: The code MUST be an async arrow function expression (the runtime wraps it as \`(CODE)()\`). Do NOT use bare statements or IIFEs.
+
+Correct: \`async () => { const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); return data; }\`
+Wrong: \`const data = await codemode.quoteSummary(...); return data;\`
+
+${TYPES_DEF}`,
       {
         code: z
           .string()
           .describe(
-            "JavaScript code to execute. Call functions via codemode.name({...args}). Return the final result."
+            "An async arrow function expression. Example: `async () => { const data = await codemode.quoteSummary({ symbol: \"AAPL\", modules: [\"price\"] }); return data; }`"
           ),
       },
       async ({ code }) => {

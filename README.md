@@ -50,34 +50,34 @@ The server exposes a single MCP tool called `codemode`. It accepts a `code` para
 
 ## Example codemode usage
 
+The `code` parameter must be an **async arrow function expression** — the runtime wraps it as `(CODE)()`.
+
 Fetch the current price of AAPL and calculate its 14-day RSI in a single call:
 
 ```javascript
-const [summary, rsi] = await Promise.all([
-  codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }),
-  codemode.calculateIndicator({ ticker: "AAPL", indicator: "RSI", timeperiod: 14, numResults: 1 })
-]);
+async () => {
+  const [summary, rsi] = await Promise.all([
+    codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }),
+    codemode.calculateIndicator({ ticker: "AAPL", indicator: "RSI", timeperiod: 14, numResults: 1 })
+  ]);
 
-const price = summary.price.regularMarketPrice;
-const latestRsi = rsi.values[rsi.values.length - 1];
+  const price = summary.price.regularMarketPrice;
+  const latestRsi = rsi.values[rsi.values.length - 1];
 
-return {
-  ticker: "AAPL",
-  price,
-  rsi: latestRsi.rsi,
-  date: latestRsi.date
-};
+  return { ticker: "AAPL", price, rsi: latestRsi.rsi, date: latestRsi.date };
+}
 ```
 
 Compare market and crypto sentiment:
 
 ```javascript
-const [cnn, crypto] = await Promise.all([
-  codemode.getCnnFearGreed({}),
-  codemode.getCryptoFearGreed({})
-]);
-
-return { cnn: cnn.fear_and_greed, crypto };
+async () => {
+  const [cnn, crypto] = await Promise.all([
+    codemode.getCnnFearGreed({}),
+    codemode.getCryptoFearGreed({})
+  ]);
+  return { cnn: cnn.fear_and_greed, crypto };
+}
 ```
 
 ## Development
