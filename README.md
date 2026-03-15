@@ -3,7 +3,20 @@
 > **Warning**
 > **Migration from v1.x (Python):** The Python MCP server previously published on PyPI as `investor-agent` is deprecated. v2.0 is a complete rewrite in TypeScript on Cloudflare Workers. The PyPI package will not receive further updates.
 
-A financial research MCP server that exposes a single **codemode** tool. Instead of calling 14 separate tools, the LLM writes JavaScript code that orchestrates multiple data-fetching functions in a single call -- fetching prices, calculating indicators, and combining results in one round trip.
+A financial research MCP server that exposes a single **codemode** tool. Instead of calling 13 separate tools, the LLM writes JavaScript code that orchestrates multiple data-fetching functions in a single call -- fetching prices, calculating indicators, and combining results in one round trip.
+
+## MCP client configuration
+
+```json
+{
+  "mcpServers": {
+    "investor-agent": {
+      "type": "url",
+      "url": "https://investor.ferdousbhai.com/mcp"
+    }
+  }
+}
+```
 
 ## Architecture
 
@@ -12,32 +25,6 @@ A financial research MCP server that exposes a single **codemode** tool. Instead
 - **Caching:** Cloudflare KV with per-function TTLs (1 minute to 24 hours)
 - **Data sources:** [yahoo-finance2](https://www.npmjs.com/package/yahoo-finance2) v3, CNN Fear & Greed, [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) Crypto Fear & Greed, NASDAQ API
 - **Technical analysis:** [trading-signals](https://www.npmjs.com/package/trading-signals) (SMA, EMA, RSI, MACD, Bollinger Bands)
-
-## Setup
-
-```bash
-pnpm install
-```
-
-### Create KV namespace
-
-```bash
-wrangler kv namespace create CACHE
-# Copy the returned id into wrangler.jsonc under kv_namespaces
-```
-
-### Local development
-
-```bash
-pnpm run dev
-# Starts wrangler dev server at http://localhost:8787
-```
-
-### Deploy
-
-```bash
-pnpm run deploy
-```
 
 ## The `codemode` tool
 
@@ -55,39 +42,11 @@ The server exposes a single MCP tool called `codemode`. It accepts a `code` para
 | `quoteSummary({ symbol, modules })` | Fetch Yahoo Finance quote summary (supports 27 modules: `assetProfile`, `financialData`, `price`, `recommendationTrend`, `earningsHistory`, etc.) |
 | `getHistorical({ symbol, period1, period2?, interval? })` | Fetch historical OHLCV price data. Interval: `1d`, `1wk`, `1mo` |
 | `getOptions({ symbol, date? })` | Fetch options chain. Omit `date` to get available expirations |
-| `getMarketMovers({ category?, count?, session? })` | Top gainers, losers, or most active stocks. Session: `regular`, `pre-market`, `after-hours` |
+| `getMarketMovers({ category?, count?, session? })` | Top gainers, losers, or most active stocks |
 | `getCnnFearGreed({})` | CNN Fear & Greed Index with sub-indicator scores |
 | `getCryptoFearGreed({})` | Crypto Fear & Greed Index from alternative.me |
 | `getNasdaqEarnings({ date?, limit? })` | NASDAQ earnings calendar for a given date |
 | `calculateIndicator({ ticker, indicator, period?, timeperiod?, ... })` | Calculate SMA, EMA, RSI, MACD, or BBANDS with configurable parameters |
-
-## MCP client configuration
-
-### Cloudflare Workers deployment (URL-based)
-
-```json
-{
-  "mcpServers": {
-    "investor-agent": {
-      "type": "url",
-      "url": "https://investor.ferdousbhai.com/mcp"
-    }
-  }
-}
-```
-
-### Local development
-
-```json
-{
-  "mcpServers": {
-    "investor-agent": {
-      "type": "url",
-      "url": "http://localhost:8787/mcp"
-    }
-  }
-}
-```
 
 ## Example codemode usage
 
@@ -121,12 +80,25 @@ const [cnn, crypto] = await Promise.all([
 return { cnn: cnn.fear_and_greed, crypto };
 ```
 
-## Testing
+## Development
 
 ```bash
-pnpm run test          # Run all tests
-pnpm run test:watch    # Watch mode
-pnpm run typecheck     # TypeScript type checking
+pnpm install
+
+# Create KV namespace (first time only)
+wrangler kv namespace create CACHE
+# Copy the returned id into wrangler.jsonc under kv_namespaces
+
+# Local development
+pnpm run dev
+
+# Deploy
+pnpm run deploy
+
+# Testing
+pnpm run test
+pnpm run test:watch
+pnpm run typecheck
 ```
 
 ## License
