@@ -2,6 +2,14 @@ import { fetchJson } from "../lib/fetch.js";
 import { getOrFetch } from "../lib/cache.js";
 import { CacheTTL } from "../types.js";
 
+/** Headers that pass CNN's bot detection. */
+const CNN_HEADERS: Record<string, string> = {
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://www.cnn.com/markets/fear-and-greed",
+  Origin: "https://www.cnn.com",
+};
+
 /** Fetch CNN Fear & Greed Index with all indicators. Strips bulky historical arrays. */
 export async function fetchCnnFearGreed(kv: KVNamespace): Promise<Record<string, unknown>> {
   return getOrFetch<Record<string, unknown>>(
@@ -9,7 +17,8 @@ export async function fetchCnnFearGreed(kv: KVNamespace): Promise<Record<string,
     "fear_greed:cnn",
     async () => {
       const raw = await fetchJson<Record<string, unknown>>(
-        "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+        "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
+        CNN_HEADERS
       );
       // Strip bulky historical time-series to keep response focused
       delete raw["fear_and_greed_historical"];

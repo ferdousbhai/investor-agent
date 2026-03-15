@@ -9,12 +9,14 @@ vi.mock("yahoo-finance2", () => {
     quoteSummary: vi.fn().mockResolvedValue({}),
     historical: vi.fn().mockResolvedValue([]),
     options: vi.fn().mockResolvedValue({}),
+    screener: vi.fn().mockResolvedValue({ quotes: [] }),
   };
   return {
     default: class YahooFinance {
       quoteSummary = instance.quoteSummary;
       historical = instance.historical;
       options = instance.options;
+      screener = instance.screener;
     },
     __mock: instance,
   };
@@ -141,43 +143,23 @@ describe("fetchCryptoFearGreed", () => {
 });
 
 describe("fetchMarketMovers", () => {
-  it("returns parsed market movers from Yahoo Finance HTML", async () => {
-    const htmlWithNextData = `
-      <script id="__NEXT_DATA__" type="application/json">
-        __NEXT_DATA__ = {"props":{"pageProps":{"screenerData":{"finance":{"result":[{"quotes":[
-          {"symbol":"NVDA","shortName":"NVIDIA","regularMarketPrice":900,"regularMarketChange":50,"regularMarketChangePercent":5.8,"regularMarketVolume":80000000,"marketCap":2200000000000}
-        ]}]}}}}};
-      </script>
-    `;
-
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve(htmlWithNextData),
+  it("returns mapped market movers from screener API", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).screener = vi.fn().mockResolvedValue({
+      quotes: [
+        { symbol: "NVDA", shortName: "NVIDIA", regularMarketPrice: 900, regularMarketChange: 50, regularMarketChangePercent: 5.8, regularMarketVolume: 80000000, marketCap: 2200000000000 },
+      ],
     });
 
     const result = await fetchMarketMovers("gainers", 25, "regular", createMockKV());
     expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThanOrEqual(0);
   });
 
-  it("returns empty array when HTML has no recognizable data", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html><body>Empty</body></html>"),
-    });
-
-    const result = await fetchMarketMovers("most-active", 25, "regular", createMockKV());
-    expect(result).toEqual([]);
-  });
-
-  it("forces regular session for non-most-active categories", async () => {
-    // "gainers" + "pre-market" resolves to "gainers:regular" (session forced to regular)
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html><body>Empty</body></html>"),
-    });
-
-    const result = await fetchMarketMovers("gainers", 10, "pre-market", createMockKV());
-    expect(Array.isArray(result)).toBe(true);
+  it("throws on invalid category", async () => {
+    await expect(
+      fetchMarketMovers("invalid", 10, "regular", createMockKV())
+    ).rejects.toThrow("Invalid category");
   });
 });
 

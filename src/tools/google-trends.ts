@@ -84,7 +84,20 @@ export async function fetchGoogleTrends(
   return getOrFetch<Array<Record<string, unknown>>>(
     kv,
     cacheKey,
-    () => fetchTrendsData(keywords, timeframe),
+    async () => {
+      try {
+        return await fetchTrendsData(keywords, timeframe);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("429")) {
+          throw new Error(
+            `Google Trends rate limit exceeded. Google aggressively rate-limits server-side requests. ` +
+            `Try again later, or check trends.google.com directly for: ${keywords.join(", ")}`
+          );
+        }
+        throw err;
+      }
+    },
     CacheTTL.GOOGLE_TRENDS
   );
 }
