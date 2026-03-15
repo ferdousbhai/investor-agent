@@ -59,7 +59,6 @@ describe("InvestorAgent Registration", () => {
     expect(typeof fetchCnnFearGreed).toBe("function");
     expect(typeof fetchCryptoFearGreed).toBe("function");
     expect(typeof fetchMarketMovers).toBe("function");
-    expect(typeof fetchGoogleTrends).toBe("function");
     expect(typeof fetchNasdaqEarningsCalendar).toBe("function");
     expect(typeof calculateIndicator).toBe("function");
   });
@@ -71,7 +70,7 @@ describe("InvestorAgent Registration", () => {
 
 import { fetchCnnFearGreed, fetchCryptoFearGreed } from "../src/tools/fear-greed.js";
 import { fetchMarketMovers } from "../src/tools/market-movers.js";
-import { fetchGoogleTrends } from "../src/tools/google-trends.js";
+
 import { fetchNasdaqEarningsCalendar } from "../src/tools/earnings.js";
 import { calculateIndicator } from "../src/tools/technical-indicators.js";
 
@@ -163,38 +162,7 @@ describe("fetchMarketMovers", () => {
   });
 });
 
-describe("fetchGoogleTrends", () => {
-  it("returns trends data as array of objects", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        text: () =>
-          Promise.resolve(
-            `)]}'
-{"widgets":[{"id":"TIMESERIES","token":"abc123","request":{"time":"today 7-d"}}]}`
-          ),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: () =>
-          Promise.resolve(
-            `)]}'
-{"default":{"timelineData":[
-  {"formattedTime":"Jan 1","value":[80],"isPartial":false},
-  {"formattedTime":"Jan 2","value":[90],"isPartial":false}
-]}}`
-          ),
-      });
 
-    const result = await fetchGoogleTrends(["AAPL"], 7, createMockKV());
-
-    expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(2);
-    expect(result[0]).toHaveProperty("date");
-    expect(result[0]).toHaveProperty("AAPL");
-    expect(result[0].AAPL).toBe(80);
-  });
-});
 
 describe("fetchNasdaqEarningsCalendar", () => {
   it("returns earnings calendar data as array", async () => {

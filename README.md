@@ -41,7 +41,7 @@ pnpm run deploy
 
 ## The `codemode` tool
 
-The server exposes a single MCP tool called `codemode`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All 14 functions are available on the `codemode` object and accept a single argument object.
+The server exposes a single MCP tool called `codemode`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All 13 functions are available on the `codemode` object and accept a single argument object.
 
 ### Sandbox functions
 
@@ -56,7 +56,6 @@ The server exposes a single MCP tool called `codemode`. It accepts a `code` para
 | `getHistorical({ symbol, period1, period2?, interval? })` | Fetch historical OHLCV price data. Interval: `1d`, `1wk`, `1mo` |
 | `getOptions({ symbol, date? })` | Fetch options chain. Omit `date` to get available expirations |
 | `getMarketMovers({ category?, count?, session? })` | Top gainers, losers, or most active stocks. Session: `regular`, `pre-market`, `after-hours` |
-| `getGoogleTrends({ keywords, periodDays? })` | Google Trends interest over time for 1-5 keywords |
 | `getCnnFearGreed({})` | CNN Fear & Greed Index with sub-indicator scores |
 | `getCryptoFearGreed({})` | Crypto Fear & Greed Index from alternative.me |
 | `getNasdaqEarnings({ date?, limit? })` | NASDAQ earnings calendar for a given date |
@@ -111,16 +110,15 @@ return {
 };
 ```
 
-Compare Fear & Greed indices and Google Trends interest:
+Compare market and crypto sentiment:
 
 ```javascript
-const [cnn, crypto, trends] = await Promise.all([
+const [cnn, crypto] = await Promise.all([
   codemode.getCnnFearGreed({}),
-  codemode.getCryptoFearGreed({}),
-  codemode.getGoogleTrends({ keywords: ["bitcoin", "recession"], periodDays: 30 })
+  codemode.getCryptoFearGreed({})
 ]);
 
-return { cnn, crypto, trends };
+return { cnn: cnn.fear_and_greed, crypto };
 ```
 
 ## Testing

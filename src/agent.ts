@@ -21,7 +21,6 @@ import {
 import { validateTicker } from "./lib/validation.js";
 import { fetchCnnFearGreed, fetchCryptoFearGreed } from "./tools/fear-greed.js";
 import { fetchMarketMovers } from "./tools/market-movers.js";
-import { fetchGoogleTrends } from "./tools/google-trends.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
 import { calculateIndicator, type IndicatorType } from "./tools/technical-indicators.js";
 
@@ -203,22 +202,6 @@ const TOOL_DESCRIPTORS: JsonSchemaToolDescriptors = {
       },
     },
   },
-  getGoogleTrends: {
-    description:
-      "Get Google Trends interest over time for 1-5 keywords. Returns array of { date, [keyword]: relativeValue(0-100) }.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        keywords: {
-          type: "array",
-          items: { type: "string" },
-          description: "Keywords to compare (1-5)",
-        },
-        periodDays: { type: "number", description: "Lookback period in days (default: 7)" },
-      },
-      required: ["keywords"],
-    },
-  },
   getCnnFearGreed: {
     description:
       "Fetch CNN Fear & Greed Index. Returns object with indicator scores: fear_and_greed, put_call_options, market_volatility_vix, junk_bond_demand, safe_haven_demand, etc.",
@@ -354,13 +337,6 @@ export class InvestorAgent extends McpAgent<Env> {
           session ?? "regular",
           env.CACHE
         );
-      },
-      getGoogleTrends: async (args: unknown) => {
-        const { keywords, periodDays } = args as {
-          keywords: string[];
-          periodDays?: number;
-        };
-        return fetchGoogleTrends(keywords, periodDays ?? 7, env.CACHE);
       },
       getCnnFearGreed: async () => fetchCnnFearGreed(env.CACHE),
       getCryptoFearGreed: async () => fetchCryptoFearGreed(env.CACHE),

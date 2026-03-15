@@ -11,7 +11,6 @@ export const CacheTTL = {
   QUOTE_SUMMARY: 300,
   TECHNICALS: 900, // 15 min
   EARNINGS_CALENDAR: 3600, // 1h
-  GOOGLE_TRENDS: 3600,
 } as const;
 
 export const BROWSER_HEADERS: Record<string, string> = {
