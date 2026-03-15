@@ -1,7 +1,7 @@
 {
   "name": "investor",
-  "version": "1.6.0",
-  "description": "Financial analysis tools for stock research, market sentiment, and investment decisions",
+  "version": "2.0.0",
+  "description": "Financial research via codemode - LLM writes JS to orchestrate 14 data functions in a sandboxed V8 isolate",
   "author": {
     "name": "Ferdous",
     "email": "ferdous@hey.com"
@@ -13,8 +13,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "investor-agent": {
-      "command": "uvx",
-      "args": ["investor-agent"]
+      "type": "url",
+      "url": "https://investor-agent.<YOUR_SUBDOMAIN>.workers.dev/mcp"
     }
   }
 }

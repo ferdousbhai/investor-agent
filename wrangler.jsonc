@@ -1,0 +1,40 @@
+{
+  "name": "investor-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-20",
+  "compatibility_flags": ["nodejs_compat"],
+  // Polyfill __dirname for CJS dependencies (e.g. @deno/shim-deno via yahoo-finance2)
+  "define": {
+    "__dirname": "\"/\""
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_OBJECT",
+        "class_name": "InvestorAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["InvestorAgent"]
+    }
+  ],
+  // Create with: wrangler kv namespace create CACHE
+  // Then paste the returned id below.
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "TODO_REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

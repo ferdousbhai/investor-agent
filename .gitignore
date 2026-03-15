@@ -1,3 +1,6 @@
+# Dependencies
+node_modules/
+
 # Python cache
 **/__pycache__
 *.pyc
@@ -22,9 +25,6 @@ test_*.py
 # Testing and coverage
 .coverage
 .pytest_cache/
-
-# GitHub
-.github/
 
 # IDE
 .vscode/
