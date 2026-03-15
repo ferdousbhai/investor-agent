@@ -10,7 +10,7 @@ A financial research MCP server that exposes a single **codemode** tool. Instead
 - **Runtime:** Cloudflare Workers with Durable Objects for persistent MCP sessions
 - **Sandbox:** [@cloudflare/codemode](https://www.npmjs.com/package/@cloudflare/codemode) v0.2.0 `DynamicWorkerExecutor` runs LLM-generated JavaScript in a sandboxed V8 isolate
 - **Caching:** Cloudflare KV with per-function TTLs (1 minute to 24 hours)
-- **Data sources:** [yahoo-finance2](https://www.npmjs.com/package/yahoo-finance2) v3, CNN Fear & Greed, [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) Crypto Fear & Greed, Google Trends, NASDAQ API
+- **Data sources:** [yahoo-finance2](https://www.npmjs.com/package/yahoo-finance2) v3, CNN Fear & Greed, [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) Crypto Fear & Greed, NASDAQ API
 - **Technical analysis:** [trading-signals](https://www.npmjs.com/package/trading-signals) (SMA, EMA, RSI, MACD, Bollinger Bands)
 
 ## Setup
