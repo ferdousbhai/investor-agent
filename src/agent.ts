@@ -25,6 +25,46 @@ import { fetchGoogleTrends } from "./tools/google-trends.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
 import { calculateIndicator, type IndicatorType } from "./tools/technical-indicators.js";
 
+// ─── Rate Limiting ──────────────────────────────────────────────────────────
+
+/** Max codemode calls per session per window. */
+const RATE_LIMIT_MAX_CALLS = 30;
+/** Rate limit window in seconds. */
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+
+/**
+ * Simple sliding-window rate limiter using Durable Object state.
+ * Tracks call timestamps and rejects when the window is exceeded.
+ */
+class RateLimiter {
+  private timestamps: number[] = [];
+
+  check(): { allowed: boolean; remaining: number; retryAfterMs?: number } {
+    const now = Date.now();
+    const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
+
+    // Prune expired timestamps
+    this.timestamps = this.timestamps.filter((t) => now - t < windowMs);
+
+    if (this.timestamps.length >= RATE_LIMIT_MAX_CALLS) {
+      const oldestInWindow = this.timestamps[0];
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterMs: windowMs - (now - oldestInWindow),
+      };
+    }
+
+    this.timestamps.push(now);
+    return {
+      allowed: true,
+      remaining: RATE_LIMIT_MAX_CALLS - this.timestamps.length,
+    };
+  }
+}
+
+// ─── Tool Descriptors ───────────────────────────────────────────────────────
+
 /**
  * JSON Schema descriptors for all sandbox functions.
  * generateTypesFromJsonSchema() converts these into TypeScript type
@@ -238,14 +278,19 @@ const TOOL_DESCRIPTORS: JsonSchemaToolDescriptors = {
 /** Pre-computed TypeScript type definitions for the codemode sandbox prompt. */
 const TYPES_DEF = generateTypesFromJsonSchema(TOOL_DESCRIPTORS);
 
+// ─── Agent ──────────────────────────────────────────────────────────────────
+
 export class InvestorAgent extends McpAgent<Env> {
   server = new McpServer({
     name: "investor-agent",
     version: pkg.version,
   });
 
+  private rateLimiter = new RateLimiter();
+
   async init() {
     const env = this.env;
+    const rateLimiter = this.rateLimiter;
 
     // Build sandbox function map — each function accepts a single args object
     // matching the generated types, then delegates to the actual implementation
@@ -355,6 +400,21 @@ export class InvestorAgent extends McpAgent<Env> {
           ),
       },
       async ({ code }) => {
+        // Rate limit check
+        const limit = rateLimiter.check();
+        if (!limit.allowed) {
+          const retryAfter = Math.ceil((limit.retryAfterMs ?? 60000) / 1000);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Rate limit exceeded (${RATE_LIMIT_MAX_CALLS} calls/${RATE_LIMIT_WINDOW_SECONDS}s). Try again in ${retryAfter}s.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
         const result = await executor.execute(code, toolFns);
 
         if (result.error) {

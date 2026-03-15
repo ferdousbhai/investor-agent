@@ -36,5 +36,13 @@
   ],
   "observability": {
     "enabled": true
-  }
+  },
+  // Custom domain — requires a CNAME record in Cloudflare DNS:
+  // investor.ferdousbhai.com → investor-agent.<account>.workers.dev
+  "routes": [
+    {
+      "pattern": "investor.ferdousbhai.com",
+      "custom_domain": true
+    }
+  ]
 }

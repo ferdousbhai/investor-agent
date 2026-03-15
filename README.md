@@ -71,7 +71,7 @@ The server exposes a single MCP tool called `codemode`. It accepts a `code` para
   "mcpServers": {
     "investor-agent": {
       "type": "url",
-      "url": "https://investor-agent.<YOUR_SUBDOMAIN>.workers.dev/mcp"
+      "url": "https://investor.ferdousbhai.com/mcp"
     }
   }
 }

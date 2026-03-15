@@ -14,7 +14,7 @@
   "mcpServers": {
     "investor-agent": {
       "type": "url",
-      "url": "https://investor-agent.<YOUR_SUBDOMAIN>.workers.dev/mcp"
+      "url": "https://investor.ferdousbhai.com/mcp"
     }
   }
 }
