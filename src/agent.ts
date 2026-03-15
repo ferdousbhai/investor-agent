@@ -286,16 +286,12 @@ export class InvestorAgent extends McpAgent<Env> {
           period2?: string;
           interval?: "1d" | "1wk" | "1mo";
         };
-        return getHistorical(
-          symbol,
-          {
-            period1: new Date(period1),
-            period2: period2 ? new Date(period2) : undefined,
-            interval,
-          },
-          env.CACHE,
-          CacheTTL.TECHNICALS
-        );
+        const histOpts: { period1: Date; period2?: Date; interval?: "1d" | "1wk" | "1mo" } = {
+          period1: new Date(period1),
+        };
+        if (period2) histOpts.period2 = new Date(period2);
+        if (interval) histOpts.interval = interval;
+        return getHistorical(symbol, histOpts, env.CACHE, CacheTTL.TECHNICALS);
       },
       getOptions: async (args: unknown) => {
         const { symbol, date } = args as { symbol: string; date?: string };
