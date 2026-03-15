@@ -1,7 +1,7 @@
 # investor-agent
 
 > **Warning**
-> **Migration from v1.x (Python):** The Python MCP server previously published on PyPI as `investor-agent` is deprecated. v2.0 is a complete rewrite in TypeScript on Cloudflare Workers. The legacy Python code is preserved in the [`python/`](python/) directory for reference. See [`python/DEPRECATED.md`](python/DEPRECATED.md) for migration details. The PyPI package will not receive further updates.
+> **Migration from v1.x (Python):** The Python MCP server previously published on PyPI as `investor-agent` is deprecated. v2.0 is a complete rewrite in TypeScript on Cloudflare Workers. The PyPI package will not receive further updates.
 
 A financial research MCP server that exposes a single **codemode** tool. Instead of calling 14 separate tools, the LLM writes JavaScript code that orchestrates multiple data-fetching functions in a single call -- fetching prices, calculating indicators, and combining results in one round trip.
 
