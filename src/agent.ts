@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   DynamicWorkerExecutor,
   generateTypesFromJsonSchema,
+  normalizeCode,
   type JsonSchemaToolDescriptors,
 } from "@cloudflare/codemode";
 import { z } from "zod";
@@ -398,11 +399,12 @@ ${TYPES_DEF}`,
           };
         }
 
-        const result = await executor.execute(code, toolFns);
+        const normalizedCode = normalizeCode(code);
+        const result = await executor.execute(normalizedCode, toolFns);
 
         if (result.error) {
           return {
-            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            content: [{ type: "text" as const, text: `Error: ${result.error}\n\nHint: code must be an async arrow function expression, e.g. async () => { const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); return data; }` }],
             isError: true,
           };
         }
