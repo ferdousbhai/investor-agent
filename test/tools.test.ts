@@ -48,6 +48,202 @@ afterEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PART 0: fetchJson / fetchText
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Note: fetchJson/fetchText imports must be after vi.mock("yahoo-finance2")
+// because they share the retry module which may trigger module initialization.
+const { fetchJson, fetchText } = await import("../src/lib/fetch.js");
+
+describe("fetchJson", () => {
+  it("returns parsed JSON on success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ price: 150 }),
+    });
+
+    const result = await fetchJson("https://example.com/api");
+    expect(result).toEqual({ price: 150 });
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it("throws on non-OK response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+    });
+
+    await expect(fetchJson("https://example.com/missing")).rejects.toThrow(
+      "HTTP 404"
+    );
+  });
+
+  it("passes custom headers merged with browser headers", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
+    await fetchJson("https://example.com/api", { Authorization: "Bearer xyz" });
+    const callHeaders = mockFetch.mock.calls[0][1].headers;
+    expect(callHeaders).toHaveProperty("Authorization", "Bearer xyz");
+    expect(callHeaders).toHaveProperty("User-Agent");
+  });
+});
+
+describe("fetchText", () => {
+  it("returns text on success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve("<html>hello</html>"),
+    });
+
+    const result = await fetchText("https://example.com");
+    expect(result).toBe("<html>hello</html>");
+  });
+
+  it("throws on non-OK response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+    });
+
+    await expect(fetchText("https://example.com/err")).rejects.toThrow(
+      "HTTP 500"
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PART 0.5: Yahoo Finance wrappers (quoteSummary, getHistorical, getOptions)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { quoteSummary, getHistorical, getOptions } = await import("../src/lib/yahoo.js");
+
+describe("quoteSummary", () => {
+  it("returns quote summary data", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).quoteSummary.mockResolvedValue({
+      price: { regularMarketPrice: 150 },
+    });
+
+    const result = await quoteSummary("AAPL", ["price"]);
+    expect(result).toHaveProperty("price");
+    expect(result.price).toHaveProperty("regularMarketPrice", 150);
+  });
+
+  it("uses KV cache when provided", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).quoteSummary.mockResolvedValue({ price: {} });
+    const kv = createMockKV();
+
+    await quoteSummary("AAPL", ["price"], kv, 300);
+    expect(kv.get).toHaveBeenCalled();
+  });
+
+  it("works without KV cache", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).quoteSummary.mockResolvedValue({ price: {} });
+
+    const result = await quoteSummary("AAPL", ["price"]);
+    expect(result).toHaveProperty("price");
+  });
+
+  it("handles multiple modules", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).quoteSummary.mockResolvedValue({
+      price: { regularMarketPrice: 150 },
+      summaryDetail: { marketCap: 2500000000000 },
+    });
+
+    const result = await quoteSummary("AAPL", ["price", "summaryDetail"]);
+    expect(result).toHaveProperty("price");
+    expect(result).toHaveProperty("summaryDetail");
+  });
+});
+
+describe("getHistorical", () => {
+  it("returns historical price data", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    const mockData = [
+      { date: new Date("2024-01-01"), open: 148, high: 150, low: 147, close: 149, volume: 1000000 },
+      { date: new Date("2024-01-02"), open: 149, high: 151, low: 148, close: 150, volume: 1100000 },
+    ];
+    (__mock as any).historical.mockResolvedValue(mockData);
+
+    const result = await getHistorical("AAPL", { period1: "2024-01-01" });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toHaveProperty("close", 149);
+  });
+
+  it("passes interval option", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).historical.mockResolvedValue([]);
+
+    await getHistorical("AAPL", {
+      period1: "2024-01-01",
+      period2: "2024-06-01",
+      interval: "1wk",
+    });
+    expect((__mock as any).historical).toHaveBeenCalledWith(
+      "AAPL",
+      expect.objectContaining({ interval: "1wk" })
+    );
+  });
+
+  it("uses KV cache when provided", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).historical.mockResolvedValue([]);
+    const kv = createMockKV();
+
+    await getHistorical("AAPL", { period1: "2024-01-01" }, kv, 900);
+    expect(kv.get).toHaveBeenCalled();
+  });
+});
+
+describe("getOptions", () => {
+  it("returns options chain data", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).options.mockResolvedValue({
+      expirationDates: ["2024-03-15", "2024-04-19"],
+      options: [{ calls: [], puts: [] }],
+    });
+
+    const result = await getOptions("AAPL");
+    expect(result).toHaveProperty("expirationDates");
+    expect(result).toHaveProperty("options");
+  });
+
+  it("passes date option when provided", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).options.mockResolvedValue({
+      expirationDates: [],
+      options: [{ calls: [{ strike: 150 }], puts: [{ strike: 140 }] }],
+    });
+
+    await getOptions("AAPL", { date: "2024-03-15" });
+    expect((__mock as any).options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
+  });
+
+  it("works without date option", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).options.mockResolvedValue({ expirationDates: [] });
+
+    await getOptions("AAPL");
+    expect((__mock as any).options).toHaveBeenCalledWith("AAPL", undefined);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PART 0.6: normalizeCode
+// ═══════════════════════════════════════════════════════════════════════════
+
+// normalizeCode tests are in test/normalize.test.ts (requires cloudflare:workers stub)
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PART 1: Agent registers only the codemode tool
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -306,6 +502,30 @@ describe("calculateIndicator", () => {
       expect(withValues).toHaveProperty("signal");
       expect(withValues).toHaveProperty("histogram");
     }
+  });
+
+  it("calculates EMA indicator", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    const history = Array.from({ length: 30 }, (_, i) => ({
+      date: new Date(2024, 0, i + 1),
+      close: 149 + i * 0.3,
+      open: 148,
+      high: 155,
+      low: 145,
+      volume: 1000000,
+    }));
+    (__mock as any).historical.mockResolvedValue(history);
+
+    const result = await calculateIndicator(
+      "AAPL",
+      "EMA",
+      { period: "1y", timeperiod: 14 },
+      createMockKV()
+    );
+
+    expect(result.values.some((v) => v.ema !== null)).toBe(true);
+    const firstNonNull = result.values.find((v) => v.ema !== null);
+    expect(typeof firstNonNull?.ema).toBe("number");
   });
 
   it("calculates BBANDS indicator", async () => {
