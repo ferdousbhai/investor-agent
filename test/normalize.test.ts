@@ -47,7 +47,24 @@ describe("normalizeCode", () => {
   it("handles IIFE by wrapping in arrow function", () => {
     const code = '(async () => { return 42; })()';
     const result = normalizeCode(code);
-    // Should normalize to a valid arrow function expression
     expect(result).toContain("42");
+  });
+
+  it("gracefully handles invalid JavaScript syntax", () => {
+    const result = normalizeCode("}{{{");
+    // Should wrap in async arrow without throwing
+    expect(result).toContain("async () =>");
+  });
+
+  it("handles whitespace-only code", () => {
+    const result = normalizeCode("   \n\n  ");
+    expect(result).toBe("async () => {}");
+  });
+
+  it("strips typescript code fences", () => {
+    const code = '```typescript\nasync () => { return 1; }\n```';
+    const result = normalizeCode(code);
+    expect(result).not.toContain("```");
+    expect(result).toContain("1");
   });
 });

@@ -38,9 +38,16 @@ function createMockKV(): KVNamespace {
 
 const mockFetch = vi.fn();
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
+
+  // Reset yahoo-finance2 mocks to prevent call history leaking between tests
+  const { __mock } = await import("yahoo-finance2");
+  (__mock as any).quoteSummary.mockReset();
+  (__mock as any).historical.mockReset();
+  (__mock as any).options.mockReset();
+  (__mock as any).screener.mockReset();
 });
 
 afterEach(() => {
@@ -241,8 +248,6 @@ describe("getOptions", () => {
 // PART 0.6: normalizeCode
 // ═══════════════════════════════════════════════════════════════════════════
 
-// normalizeCode tests are in test/normalize.test.ts (requires cloudflare:workers stub)
-
 // ═══════════════════════════════════════════════════════════════════════════
 // PART 1: Agent registers only the codemode tool
 // ═══════════════════════════════════════════════════════════════════════════
@@ -340,7 +345,7 @@ describe("fetchCryptoFearGreed", () => {
 describe("fetchMarketMovers", () => {
   it("returns mapped market movers from screener API", async () => {
     const { __mock } = await import("yahoo-finance2");
-    (__mock as any).screener = vi.fn().mockResolvedValue({
+    (__mock as any).screener.mockResolvedValue({
       quotes: [
         { symbol: "NVDA", shortName: "NVIDIA", regularMarketPrice: 900, regularMarketChange: 50, regularMarketChangePercent: 5.8, regularMarketVolume: 80000000, marketCap: 2200000000000 },
       ],
@@ -348,7 +353,8 @@ describe("fetchMarketMovers", () => {
 
     const result = await fetchMarketMovers("gainers", 25, "regular", createMockKV());
     expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBeGreaterThanOrEqual(0);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveProperty("Symbol", "NVDA");
   });
 
   it("throws on invalid category", async () => {
@@ -357,8 +363,6 @@ describe("fetchMarketMovers", () => {
     ).rejects.toThrow("Invalid category");
   });
 });
-
-
 
 describe("fetchNasdaqEarningsCalendar", () => {
   it("returns earnings calendar data as array", async () => {
@@ -497,11 +501,10 @@ describe("calculateIndicator", () => {
     );
 
     const withValues = result.values.find((v) => v.macd !== null);
-    if (withValues) {
-      expect(withValues).toHaveProperty("macd");
-      expect(withValues).toHaveProperty("signal");
-      expect(withValues).toHaveProperty("histogram");
-    }
+    expect(withValues).toBeDefined();
+    expect(withValues).toHaveProperty("macd");
+    expect(withValues).toHaveProperty("signal");
+    expect(withValues).toHaveProperty("histogram");
   });
 
   it("calculates EMA indicator", async () => {
@@ -548,10 +551,26 @@ describe("calculateIndicator", () => {
     );
 
     const withValues = result.values.find((v) => v.upper !== null);
-    if (withValues) {
-      expect(withValues).toHaveProperty("upper");
-      expect(withValues).toHaveProperty("middle");
-      expect(withValues).toHaveProperty("lower");
-    }
+    expect(withValues).toBeDefined();
+    expect(withValues).toHaveProperty("upper");
+    expect(withValues).toHaveProperty("middle");
+    expect(withValues).toHaveProperty("lower");
+  });
+
+  it("throws on unsupported indicator type", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    const history = Array.from({ length: 30 }, (_, i) => ({
+      date: new Date(2024, 0, i + 1),
+      close: 149 + i,
+      open: 148,
+      high: 155,
+      low: 145,
+      volume: 1000000,
+    }));
+    (__mock as any).historical.mockResolvedValue(history);
+
+    await expect(
+      calculateIndicator("AAPL", "INVALID" as any, {}, createMockKV())
+    ).rejects.toThrow("Unsupported indicator");
   });
 });
