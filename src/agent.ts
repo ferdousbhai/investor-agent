@@ -2,7 +2,6 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   DynamicWorkerExecutor,
-  generateTypesFromJsonSchema,
   normalizeCode,
   type JsonSchemaToolDescriptors,
 } from "@cloudflare/codemode";
@@ -259,8 +258,39 @@ const TOOL_DESCRIPTORS: JsonSchemaToolDescriptors = {
   },
 };
 
-/** Pre-computed TypeScript type definitions for the codemode sandbox prompt. */
-const TYPES_DEF = generateTypesFromJsonSchema(TOOL_DESCRIPTORS);
+/** Compact type definitions for the codemode sandbox prompt.
+ * Hand-crafted instead of auto-generated to minimize token usage (~60% smaller).
+ * Omits unknown Output types and redundant JSDoc that duplicates description fields.
+ */
+const TYPES_DEF = `
+declare const codemode: {
+  /** Fetch JSON from a URL. */
+  fetchJson(input: { url: string; headers?: Record<string, string> }): Promise<unknown>;
+  /** Fetch raw text/HTML from a URL. */
+  fetchText(input: { url: string; headers?: Record<string, string> }): Promise<unknown>;
+  /** Convert array of objects to CSV string. */
+  toCleanCsv(input: { rows: Record<string, unknown>[] }): Promise<string>;
+  /** Validate and normalize a ticker symbol. */
+  validateTicker(input: { ticker: string }): Promise<string>;
+  /** Convert period string (1d,1mo,3mo,6mo,1y,2y,5y,ytd,max) to date range. */
+  periodToDates(input: { period: string }): Promise<{ period1: Date; period2: Date }>;
+  /** Yahoo Finance quote summary. Modules: assetProfile, calendarEvents, defaultKeyStatistics, earnings, financialData, price, recommendationTrend, summaryDetail, summaryProfile, upgradeDowngradeHistory, etc. */
+  quoteSummary(input: { symbol: string; modules: string[] }): Promise<unknown>;
+  /** Historical OHLCV price data. Returns [{ date, open, high, low, close, volume }]. */
+  getHistorical(input: { symbol: string; period1: string; period2?: string; interval?: "1d"|"1wk"|"1mo" }): Promise<unknown>;
+  /** Options chain data. Call without date for available expirations. */
+  getOptions(input: { symbol: string; date?: string }): Promise<unknown>;
+  /** Top market movers. Returns [{ Symbol, Name, Price, Change, 'Change %', Volume, 'Market Cap' }]. */
+  getMarketMovers(input: { category?: "gainers"|"losers"|"most-active"; count?: number; session?: "regular"|"pre-market"|"after-hours" }): Promise<unknown>;
+  /** CNN Fear & Greed Index with indicator scores. */
+  getCnnFearGreed(input?: {}): Promise<unknown>;
+  /** Crypto Fear & Greed Index. Returns { value, classification, timestamp }. */
+  getCryptoFearGreed(input?: {}): Promise<unknown>;
+  /** NASDAQ earnings calendar. */
+  getNasdaqEarnings(input?: { date?: string; limit?: number }): Promise<unknown>;
+  /** Technical indicator. Returns { prices, values }. Indicator fields: SMA→sma, EMA→ema, RSI→rsi, MACD→macd/signal/histogram, BBANDS→upper/middle/lower. */
+  calculateIndicator(input: { ticker: string; indicator: "SMA"|"EMA"|"RSI"|"MACD"|"BBANDS"; period?: "1mo"|"3mo"|"6mo"|"1y"|"2y"|"5y"; timeperiod?: number; fastperiod?: number; slowperiod?: number; signalperiod?: number; nbdev?: number; numResults?: number }): Promise<unknown>;
+};`;
 
 // ─── Agent ──────────────────────────────────────────────────────────────────
 
