@@ -18,6 +18,8 @@ A financial research MCP server that exposes a single **codemode** tool. Instead
 }
 ```
 
+Health check: `GET https://investor.ferdousbhai.com/` returns `200 OK`.
+
 ## Architecture
 
 - **Runtime:** Cloudflare Workers with Durable Objects for persistent MCP sessions
