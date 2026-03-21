@@ -418,6 +418,7 @@ ${TYPES_DEF}`,
         const limit = rateLimiter.check();
         if (!limit.allowed) {
           const retryAfter = Math.ceil((limit.retryAfterMs ?? 60000) / 1000);
+          console.warn(`[codemode] rate limited — retry in ${retryAfter}s`);
           return {
             content: [
               {
@@ -433,12 +434,14 @@ ${TYPES_DEF}`,
         const result = await executor.execute(normalizedCode, toolFns);
 
         if (result.error) {
+          console.error(`[codemode] error (${limit.remaining} remaining): ${result.error}`);
           return {
             content: [{ type: "text" as const, text: `Error: ${result.error}\n\nHint: code must be an async arrow function expression, e.g. async () => { const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); return data; }` }],
             isError: true,
           };
         }
 
+        console.log(`[codemode] ok (${limit.remaining} remaining, ${result.logs?.length ?? 0} logs)`);
         const output: string[] = [];
         if (result.logs && result.logs.length > 0) {
           output.push(`Logs:\n${result.logs.join("\n")}`);
