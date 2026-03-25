@@ -1,24 +1,15 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  DynamicWorkerExecutor,
-  normalizeCode,
-  type JsonSchemaToolDescriptors,
-} from "@cloudflare/codemode";
+import { DynamicWorkerExecutor, normalizeCode } from "@cloudflare/codemode";
 import { z } from "zod";
 import { CacheTTL, type Env } from "./types.js";
 import pkg from "../package.json";
 
-// Data-fetching functions exposed to the codemode sandbox
-import { fetchJson, fetchText } from "./lib/fetch.js";
-import { toCleanCsv } from "./lib/csv.js";
 import {
   quoteSummary,
   getHistorical,
   getOptions as yfGetOptions,
-  periodToDates,
 } from "./lib/yahoo.js";
-import { validateTicker } from "./lib/validation.js";
 import { fetchCnnFearGreed, fetchCryptoFearGreed } from "./tools/fear-greed.js";
 import { fetchMarketMovers } from "./tools/market-movers.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
@@ -26,15 +17,9 @@ import { calculateIndicator, type IndicatorType } from "./tools/technical-indica
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
 
-/** Max codemode calls per session per window. */
 const RATE_LIMIT_MAX_CALLS = 30;
-/** Rate limit window in seconds. */
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 
-/**
- * Simple sliding-window rate limiter using Durable Object state.
- * Tracks call timestamps and rejects when the window is exceeded.
- */
 class RateLimiter {
   private timestamps: number[] = [];
 
@@ -42,7 +27,6 @@ class RateLimiter {
     const now = Date.now();
     const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
 
-    // Prune expired timestamps
     this.timestamps = this.timestamps.filter((t) => now - t < windowMs);
 
     if (this.timestamps.length >= RATE_LIMIT_MAX_CALLS) {
@@ -62,233 +46,27 @@ class RateLimiter {
   }
 }
 
-// ─── Tool Descriptors ───────────────────────────────────────────────────────
+// ─── Tool Description ───────────────────────────────────────────────────────
 
-/**
- * JSON Schema descriptors for all sandbox functions.
- * generateTypesFromJsonSchema() converts these into TypeScript type
- * definitions that the LLM sees in the codemode tool description.
- */
-const TOOL_DESCRIPTORS: JsonSchemaToolDescriptors = {
-  fetchJson: {
-    description: "Fetch JSON from a URL with retry and browser headers. Returns parsed JSON.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "URL to fetch" },
-        headers: {
-          type: "object",
-          additionalProperties: { type: "string" },
-          description: "Optional request headers",
-        },
-      },
-      required: ["url"],
-    },
-  },
-  fetchText: {
-    description: "Fetch raw text/HTML from a URL with retry and browser headers.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "URL to fetch" },
-        headers: {
-          type: "object",
-          additionalProperties: { type: "string" },
-          description: "Optional request headers",
-        },
-      },
-      required: ["url"],
-    },
-  },
-  toCleanCsv: {
-    description:
-      "Convert an array of objects to a CSV string. Automatically removes empty columns.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        rows: {
-          type: "array",
-          items: { type: "object" },
-          description: "Array of row objects to convert",
-        },
-      },
-      required: ["rows"],
-    },
-  },
-  validateTicker: {
-    description: "Validate and normalize a stock ticker symbol (trims, uppercases). Throws on invalid.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        ticker: { type: "string", description: "Ticker symbol" },
-      },
-      required: ["ticker"],
-    },
-  },
-  periodToDates: {
-    description:
-      "Convert a period string (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max) to { period1: Date, period2: Date }.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        period: { type: "string", description: "Period string" },
-      },
-      required: ["period"],
-    },
-  },
-  quoteSummary: {
-    description:
-      "Fetch Yahoo Finance quote summary. Modules: assetProfile, balanceSheetHistory, balanceSheetHistoryQuarterly, calendarEvents, cashflowStatementHistory, cashflowStatementHistoryQuarterly, defaultKeyStatistics, earnings, earningsHistory, earningsTrend, financialData, fundOwnership, incomeStatementHistory, incomeStatementHistoryQuarterly, indexTrend, industryTrend, insiderHolders, insiderTransactions, institutionOwnership, majorHoldersBreakdown, netSharePurchaseActivity, price, recommendationTrend, secFilings, summaryDetail, summaryProfile, upgradeDowngradeHistory. Returns raw Yahoo Finance data.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        symbol: { type: "string", description: "Ticker symbol" },
-        modules: {
-          type: "array",
-          items: { type: "string" },
-          description: "Yahoo Finance modules to fetch",
-        },
-      },
-      required: ["symbol", "modules"],
-    },
-  },
-  getHistorical: {
-    description:
-      "Fetch historical OHLCV price data from Yahoo Finance. Returns array of { date, open, high, low, close, volume }.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        symbol: { type: "string", description: "Ticker symbol" },
-        period1: { type: "string", description: "Start date (ISO string or Date)" },
-        period2: { type: "string", description: "End date (ISO string or Date)" },
-        interval: {
-          type: "string",
-          enum: ["1d", "1wk", "1mo"],
-          description: "Data interval (default: 1d)",
-        },
-      },
-      required: ["symbol", "period1"],
-    },
-  },
-  getOptions: {
-    description:
-      "Fetch options chain data from Yahoo Finance. Returns { expirationDates, options: [{ calls, puts }], ...}. Call without date to get available expirations, then with a specific date for chain data.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        symbol: { type: "string", description: "Ticker symbol" },
-        date: { type: "string", description: "Expiration date (YYYY-MM-DD) to fetch chain for" },
-      },
-      required: ["symbol"],
-    },
-  },
-  getMarketMovers: {
-    description:
-      "Get top market movers from Yahoo Finance. Returns array of { Symbol, Name, Price, Change, 'Change %', Volume, 'Market Cap' }.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        category: {
-          type: "string",
-          enum: ["gainers", "losers", "most-active"],
-          description: "Category (default: most-active)",
-        },
-        count: { type: "number", description: "Number of results 1-100 (default: 25)" },
-        session: {
-          type: "string",
-          enum: ["regular", "pre-market", "after-hours"],
-          description: "Market session, only applies to most-active (default: regular)",
-        },
-      },
-    },
-  },
-  getCnnFearGreed: {
-    description:
-      "Fetch CNN Fear & Greed Index. Returns object with indicator scores: fear_and_greed, put_call_options, market_volatility_vix, junk_bond_demand, safe_haven_demand, etc.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  getCryptoFearGreed: {
-    description:
-      "Fetch Crypto Fear & Greed Index. Returns { value, classification, timestamp }.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  getNasdaqEarnings: {
-    description:
-      "Fetch NASDAQ earnings calendar for a date. Returns array of company earnings entries.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        date: { type: "string", description: "Date YYYY-MM-DD (default: today)" },
-        limit: { type: "number", description: "Max entries (default: 100)" },
-      },
-    },
-  },
-  calculateIndicator: {
-    description:
-      "Calculate a technical indicator. Returns { prices: [{date,open,high,low,close,volume}], values: [{date, ...indicatorFields}] }. Indicator fields: SMA→sma, EMA→ema, RSI→rsi, MACD→macd/signal/histogram, BBANDS→upper/middle/lower. Null values mean not yet converged.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        ticker: { type: "string", description: "Ticker symbol" },
-        indicator: {
-          type: "string",
-          enum: ["SMA", "EMA", "RSI", "MACD", "BBANDS"],
-          description: "Indicator type",
-        },
-        period: {
-          type: "string",
-          enum: ["1mo", "3mo", "6mo", "1y", "2y", "5y"],
-          description: "Price history period (default: 1y)",
-        },
-        timeperiod: { type: "number", description: "Indicator period (default: 14)" },
-        fastperiod: { type: "number", description: "MACD fast period (default: 12)" },
-        slowperiod: { type: "number", description: "MACD slow period (default: 26)" },
-        signalperiod: { type: "number", description: "MACD signal period (default: 9)" },
-        nbdev: { type: "number", description: "BBANDS std devs (default: 2)" },
-        numResults: { type: "number", description: "Number of most recent results (default: 100)" },
-      },
-      required: ["ticker", "indicator"],
-    },
-  },
-};
+/** Max response size in characters (~6K tokens). Matches Cloudflare's truncation strategy. */
+const MAX_RESPONSE_CHARS = 24_000;
 
 /** Compact type definitions for the codemode sandbox prompt.
- * Hand-crafted instead of auto-generated to minimize token usage (~60% smaller).
- * Omits unknown Output types and redundant JSDoc that duplicates description fields.
+ * Hand-crafted to minimize token usage. Only includes JSDoc where
+ * the function name doesn't convey the behavior.
  */
 const TYPES_DEF = `
+quoteSummary modules: assetProfile, balanceSheetHistory, balanceSheetHistoryQuarterly, calendarEvents, cashflowStatementHistory, cashflowStatementHistoryQuarterly, defaultKeyStatistics, earnings, earningsHistory, earningsTrend, financialData, fundOwnership, incomeStatementHistory, incomeStatementHistoryQuarterly, indexTrend, industryTrend, insiderHolders, insiderTransactions, institutionOwnership, majorHoldersBreakdown, netSharePurchaseActivity, price, recommendationTrend, secFilings, summaryDetail, summaryProfile, upgradeDowngradeHistory.
+
 declare const codemode: {
-  /** Fetch JSON from a URL. */
-  fetchJson(input: { url: string; headers?: Record<string, string> }): Promise<unknown>;
-  /** Fetch raw text/HTML from a URL. */
-  fetchText(input: { url: string; headers?: Record<string, string> }): Promise<unknown>;
-  /** Convert array of objects to CSV string. */
-  toCleanCsv(input: { rows: Record<string, unknown>[] }): Promise<string>;
-  /** Validate and normalize a ticker symbol. */
-  validateTicker(input: { ticker: string }): Promise<string>;
-  /** Convert period string (1d,1mo,3mo,6mo,1y,2y,5y,ytd,max) to date range. */
-  periodToDates(input: { period: string }): Promise<{ period1: Date; period2: Date }>;
-  /** Yahoo Finance quote summary. Modules: assetProfile, calendarEvents, defaultKeyStatistics, earnings, financialData, price, recommendationTrend, summaryDetail, summaryProfile, upgradeDowngradeHistory, etc. */
   quoteSummary(input: { symbol: string; modules: string[] }): Promise<unknown>;
-  /** Historical OHLCV price data. Returns [{ date, open, high, low, close, volume }]. */
+  /** Returns [{ date, open, high, low, close, volume }]. */
   getHistorical(input: { symbol: string; period1: string; period2?: string; interval?: "1d"|"1wk"|"1mo" }): Promise<unknown>;
-  /** Options chain data. Call without date for available expirations. */
+  /** Call without date for available expirations. */
   getOptions(input: { symbol: string; date?: string }): Promise<unknown>;
-  /** Top market movers. Returns [{ Symbol, Name, Price, Change, 'Change %', Volume, 'Market Cap' }]. */
-  getMarketMovers(input: { category?: "gainers"|"losers"|"most-active"; count?: number; session?: "regular"|"pre-market"|"after-hours" }): Promise<unknown>;
-  /** CNN Fear & Greed Index with indicator scores. */
-  getCnnFearGreed(input?: {}): Promise<unknown>;
-  /** Crypto Fear & Greed Index. Returns { value, classification, timestamp }. */
-  getCryptoFearGreed(input?: {}): Promise<unknown>;
-  /** NASDAQ earnings calendar. */
-  getNasdaqEarnings(input?: { date?: string; limit?: number }): Promise<unknown>;
-  /** Technical indicator. Returns { prices, values }. Indicator fields: SMA→sma, EMA→ema, RSI→rsi, MACD→macd/signal/histogram, BBANDS→upper/middle/lower. */
+  /** Market-wide data: movers (gainers/losers/most-active), earnings calendar, or fear & greed indices. */
+  getMarketData(input: { source: "movers"|"earnings"|"fear-greed"; market?: "stock"|"crypto"; category?: "gainers"|"losers"|"most-active"; count?: number; date?: string }): Promise<unknown>;
+  /** Returns { prices, values }. Fields: SMA→sma, EMA→ema, RSI→rsi, MACD→macd/signal/histogram, BBANDS→upper/middle/lower. */
   calculateIndicator(input: { ticker: string; indicator: "SMA"|"EMA"|"RSI"|"MACD"|"BBANDS"; period?: "1mo"|"3mo"|"6mo"|"1y"|"2y"|"5y"; timeperiod?: number; fastperiod?: number; slowperiod?: number; signalperiod?: number; nbdev?: number; numResults?: number }): Promise<unknown>;
 };`;
 
@@ -306,29 +84,8 @@ export class InvestorAgent extends McpAgent<Env> {
     const env = this.env;
     const rateLimiter = this.rateLimiter;
 
-    // Build sandbox function map — each function accepts a single args object
-    // matching the generated types, then delegates to the actual implementation
+    // Build sandbox function map — each key matches a function in TYPES_DEF
     const toolFns: Record<string, (args: unknown) => Promise<unknown>> = {
-      fetchJson: async (args: unknown) => {
-        const { url, headers } = args as { url: string; headers?: Record<string, string> };
-        return fetchJson(url, headers);
-      },
-      fetchText: async (args: unknown) => {
-        const { url, headers } = args as { url: string; headers?: Record<string, string> };
-        return fetchText(url, headers);
-      },
-      toCleanCsv: async (args: unknown) => {
-        const { rows } = args as { rows: Record<string, unknown>[] };
-        return toCleanCsv(rows);
-      },
-      validateTicker: async (args: unknown) => {
-        const { ticker } = args as { ticker: string };
-        return validateTicker(ticker);
-      },
-      periodToDates: async (args: unknown) => {
-        const { period } = args as { period: string };
-        return periodToDates(period);
-      },
       quoteSummary: async (args: unknown) => {
         const { symbol, modules } = args as { symbol: string; modules: string[] };
         return quoteSummary(
@@ -339,41 +96,42 @@ export class InvestorAgent extends McpAgent<Env> {
         );
       },
       getHistorical: async (args: unknown) => {
-        const { symbol, period1, period2, interval } = args as {
+        const { symbol, ...opts } = args as {
           symbol: string;
           period1: string;
           period2?: string;
           interval?: "1d" | "1wk" | "1mo";
         };
-        const histOpts: { period1: Date; period2?: Date; interval?: "1d" | "1wk" | "1mo" } = {
-          period1: new Date(period1),
-        };
-        if (period2) histOpts.period2 = new Date(period2);
-        if (interval) histOpts.interval = interval;
-        return getHistorical(symbol, histOpts, env.CACHE, CacheTTL.TECHNICALS);
+        return getHistorical(symbol, opts, env.CACHE, CacheTTL.TECHNICALS);
       },
       getOptions: async (args: unknown) => {
         const { symbol, date } = args as { symbol: string; date?: string };
         return yfGetOptions(symbol, date ? { date } : undefined);
       },
-      getMarketMovers: async (args: unknown) => {
-        const { category, count, session } = args as {
+      getMarketData: async (args: unknown) => {
+        const { source, market, category, count, date } = args as {
+          source: string;
+          market?: string;
           category?: string;
           count?: number;
-          session?: string;
+          date?: string;
         };
-        return fetchMarketMovers(
-          category ?? "most-active",
-          count ?? 25,
-          session ?? "regular",
-          env.CACHE
-        );
-      },
-      getCnnFearGreed: async () => fetchCnnFearGreed(env.CACHE),
-      getCryptoFearGreed: async () => fetchCryptoFearGreed(env.CACHE),
-      getNasdaqEarnings: async (args: unknown) => {
-        const { date, limit } = args as { date?: string; limit?: number };
-        return fetchNasdaqEarningsCalendar(date, limit ?? 100, env.CACHE);
+        switch (source) {
+          case "movers":
+            return fetchMarketMovers(
+              category ?? "most-active",
+              count ?? 25,
+              env.CACHE
+            );
+          case "earnings":
+            return fetchNasdaqEarningsCalendar(date, count ?? 100, env.CACHE);
+          case "fear-greed":
+            return market === "crypto"
+              ? fetchCryptoFearGreed(env.CACHE)
+              : fetchCnnFearGreed(env.CACHE);
+          default:
+            throw new Error(`Unknown source '${source}'. Valid: movers, earnings, fear-greed`);
+        }
       },
       calculateIndicator: async (args: unknown) => {
         const { ticker, indicator, ...opts } = args as {
@@ -398,23 +156,15 @@ export class InvestorAgent extends McpAgent<Env> {
 
     this.server.tool(
       "codemode",
-      `Execute JavaScript code to orchestrate investor research tools in a single call. All functions are available on the \`codemode\` object and accept a single argument object.
+      `Execute JavaScript to research financial markets. Available: quotes, historical prices, options chains, technical indicators (SMA/EMA/RSI/MACD/BBANDS), market movers, earnings calendar, and fear & greed indices.
 
-IMPORTANT: The code MUST be an async arrow function expression (the runtime wraps it as \`(CODE)()\`). Do NOT use bare statements or IIFEs.
-
-Correct: \`async () => { const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); return data; }\`
+Code MUST be an async arrow function expression (runtime wraps it as \`(CODE)()\`).
+Correct: \`async () => { return await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }\`
 Wrong: \`const data = await codemode.quoteSummary(...); return data;\`
 
 ${TYPES_DEF}`,
-      {
-        code: z
-          .string()
-          .describe(
-            "An async arrow function expression. Example: `async () => { const data = await codemode.quoteSummary({ symbol: \"AAPL\", modules: [\"price\"] }); return data; }`"
-          ),
-      },
+      { code: z.string().describe("Async arrow function expression") },
       async ({ code }) => {
-        // Rate limit check
         const limit = rateLimiter.check();
         if (!limit.allowed) {
           const retryAfter = Math.ceil((limit.retryAfterMs ?? 60000) / 1000);
@@ -436,24 +186,43 @@ ${TYPES_DEF}`,
         if (result.error) {
           console.error(`[codemode] error (${limit.remaining} remaining): ${result.error}`);
           return {
-            content: [{ type: "text" as const, text: `Error: ${result.error}\n\nHint: code must be an async arrow function expression, e.g. async () => { const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); return data; }` }],
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: ${result.error}\n\nHint: code must be an async arrow function, e.g. async () => { return await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }`,
+              },
+            ],
             isError: true,
           };
         }
 
         console.log(`[codemode] ok (${limit.remaining} remaining, ${result.logs?.length ?? 0} logs)`);
-        const output: string[] = [];
+        const parts: string[] = [];
         if (result.logs && result.logs.length > 0) {
-          output.push(`Logs:\n${result.logs.join("\n")}`);
+          parts.push(`Logs:\n${result.logs.join("\n")}`);
         }
-        output.push(
-          typeof result.result === "string"
-            ? result.result
-            : JSON.stringify(result.result, null, 2)
-        );
+
+        let text: string;
+        let truncated = false;
+        // Truncate arrays before serializing to avoid broken JSON
+        if (Array.isArray(result.result)) {
+          let arr = result.result as unknown[];
+          text = JSON.stringify(arr);
+          while (arr.length > 1 && text.length > MAX_RESPONSE_CHARS) {
+            arr = arr.slice(0, Math.ceil(arr.length / 2));
+            text = JSON.stringify(arr);
+            truncated = true;
+          }
+        } else {
+          text = typeof result.result === "string" ? result.result : JSON.stringify(result.result);
+        }
+        if (truncated) {
+          text += `\n\n[Truncated to fit ~${MAX_RESPONSE_CHARS} chars. Narrow your query in code.]`;
+        }
+        parts.push(text);
 
         return {
-          content: [{ type: "text" as const, text: output.join("\n\n") }],
+          content: [{ type: "text" as const, text: parts.join("\n\n") }],
         };
       }
     );

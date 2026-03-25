@@ -8,8 +8,8 @@ import { withRetry } from "./retry.js";
 import { getOrFetch } from "./cache.js";
 import type { HistoricalRow } from "./yahoo-types.js";
 
-// Create a singleton instance with validation suppressed
-const yf = new YahooFinance({
+// Singleton instance with validation suppressed — also used by tools/market-movers.ts
+export const yf = new YahooFinance({
   validation: { logErrors: false, logOptionsErrors: false },
 });
 

@@ -2,11 +2,7 @@ import { getOrFetch } from "../lib/cache.js";
 import { clamp } from "../lib/validation.js";
 import { CacheTTL } from "../types.js";
 import { withRetry } from "../lib/retry.js";
-import YahooFinance from "yahoo-finance2";
-
-const yf = new YahooFinance({
-  validation: { logErrors: false, logOptionsErrors: false },
-});
+import { yf } from "../lib/yahoo.js";
 
 /** Yahoo Finance screener IDs for market movers */
 const SCREENER_MAP: Record<string, string> = {
@@ -19,7 +15,6 @@ const SCREENER_MAP: Record<string, string> = {
 export async function fetchMarketMovers(
   category: string,
   count: number,
-  _session: string, // kept for API compatibility; screener only supports regular session
   kv: KVNamespace
 ): Promise<Array<Record<string, unknown>>> {
   const safeCount = clamp(count, 1, 100);

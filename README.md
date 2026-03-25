@@ -3,7 +3,7 @@
 > **Warning**
 > **Migration from v1.x (Python):** The Python MCP server previously published on PyPI as `investor-agent` is deprecated. v2.0 is a complete rewrite in TypeScript on Cloudflare Workers. The PyPI package will not receive further updates.
 
-A financial research MCP server that exposes a single **codemode** tool. Instead of calling 13 separate tools, the LLM writes JavaScript code that orchestrates multiple data-fetching functions in a single call -- fetching prices, calculating indicators, and combining results in one round trip.
+A financial research MCP server that exposes a single **codemode** tool with 5 sandbox functions. The LLM writes JavaScript that orchestrates data fetching, calculations, and result assembly in one round trip.
 
 ## MCP client configuration
 
@@ -30,27 +30,19 @@ Health check: `GET https://investor.ferdousbhai.com/` returns `200 OK`.
 
 ## The `codemode` tool
 
-The server exposes a single MCP tool called `codemode`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All 13 functions are available on the `codemode` object and accept a single argument object.
+The server exposes a single MCP tool called `codemode`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All functions are available on the `codemode` object and accept a single argument object.
 
 ### Sandbox functions
 
 | Function | Description |
 |----------|-------------|
-| `fetchJson({ url, headers? })` | Fetch JSON from a URL with retry and browser headers |
-| `fetchText({ url, headers? })` | Fetch raw text/HTML from a URL with retry and browser headers |
-| `toCleanCsv({ rows })` | Convert an array of objects to CSV, auto-removing empty columns |
-| `validateTicker({ ticker })` | Validate and normalize a ticker symbol (trims, uppercases) |
-| `periodToDates({ period })` | Convert a period string (`1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `10y`, `ytd`, `max`) to `{ period1, period2 }` dates |
-| `quoteSummary({ symbol, modules })` | Fetch Yahoo Finance quote summary (supports 27 modules: `assetProfile`, `financialData`, `price`, `recommendationTrend`, `earningsHistory`, etc.) |
-| `getHistorical({ symbol, period1, period2?, interval? })` | Fetch historical OHLCV price data. Interval: `1d`, `1wk`, `1mo` |
-| `getOptions({ symbol, date? })` | Fetch options chain. Omit `date` to get available expirations |
-| `getMarketMovers({ category?, count?, session? })` | Top gainers, losers, or most active stocks |
-| `getCnnFearGreed({})` | CNN Fear & Greed Index with sub-indicator scores |
-| `getCryptoFearGreed({})` | Crypto Fear & Greed Index from alternative.me |
-| `getNasdaqEarnings({ date?, limit? })` | NASDAQ earnings calendar for a given date |
-| `calculateIndicator({ ticker, indicator, period?, timeperiod?, ... })` | Calculate SMA, EMA, RSI, MACD, or BBANDS with configurable parameters |
+| `quoteSummary({ symbol, modules })` | Yahoo Finance quote summary (modules: `assetProfile`, `financialData`, `price`, `recommendationTrend`, `summaryDetail`, etc.) |
+| `getHistorical({ symbol, period1, period2?, interval? })` | Historical OHLCV price data. Interval: `1d`, `1wk`, `1mo` |
+| `getOptions({ symbol, date? })` | Options chain. Omit `date` to get available expirations |
+| `getMarketData({ source, ... })` | Market-wide data: `"movers"` (top gainers/losers/most-active), `"earnings"` (NASDAQ calendar), or `"fear-greed"` (CNN or crypto sentiment) |
+| `calculateIndicator({ ticker, indicator, ... })` | Calculate SMA, EMA, RSI, MACD, or BBANDS with configurable parameters |
 
-## Example codemode usage
+### Examples
 
 The `code` parameter must be an **async arrow function expression** — the runtime wraps it as `(CODE)()`.
 
@@ -62,11 +54,10 @@ async () => {
     codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }),
     codemode.calculateIndicator({ ticker: "AAPL", indicator: "RSI", timeperiod: 14, numResults: 1 })
   ]);
-
-  const price = summary.price.regularMarketPrice;
-  const latestRsi = rsi.values[rsi.values.length - 1];
-
-  return { ticker: "AAPL", price, rsi: latestRsi.rsi, date: latestRsi.date };
+  return {
+    price: summary.price.regularMarketPrice,
+    rsi: rsi.values.at(-1).rsi
+  };
 }
 ```
 
@@ -74,11 +65,11 @@ Compare market and crypto sentiment:
 
 ```javascript
 async () => {
-  const [cnn, crypto] = await Promise.all([
-    codemode.getCnnFearGreed({}),
-    codemode.getCryptoFearGreed({})
+  const [stock, crypto] = await Promise.all([
+    codemode.getMarketData({ source: "fear-greed" }),
+    codemode.getMarketData({ source: "fear-greed", market: "crypto" })
   ]);
-  return { cnn: cnn.fear_and_greed, crypto };
+  return { stock: stock.fear_and_greed, crypto };
 }
 ```
 

@@ -351,7 +351,7 @@ describe("fetchMarketMovers", () => {
       ],
     });
 
-    const result = await fetchMarketMovers("gainers", 25, "regular", createMockKV());
+    const result = await fetchMarketMovers("gainers", 25, createMockKV());
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
     expect(result[0]).toHaveProperty("Symbol", "NVDA");
@@ -359,7 +359,7 @@ describe("fetchMarketMovers", () => {
 
   it("throws on invalid category", async () => {
     await expect(
-      fetchMarketMovers("invalid", 10, "regular", createMockKV())
+      fetchMarketMovers("invalid", 10, createMockKV())
     ).rejects.toThrow("Invalid category");
   });
 });
