@@ -2,11 +2,10 @@
 
 ## Commands
 
-- `pnpm run dev` — local development
-- `pnpm run typecheck` — type check
 - `pnpm run test` — run tests
-- `pnpm run test:watch` — run tests in watch mode
+- `pnpm run typecheck` — type check
+- `pnpm run dev` — local dev server
 
-## Deployment
+## Ship
 
-CI/CD is in `.github/workflows/publish.yml`. Pushing to `main` triggers typecheck + tests, then auto-deploys to Cloudflare Workers. Do NOT run `pnpm run deploy` manually — just commit and push, then watch the GitHub Actions run.
+Commit, push to `main`, and watch the GitHub Actions run. CI runs typecheck + tests, then auto-deploys to Cloudflare Workers. Do not run `pnpm run deploy` manually.
