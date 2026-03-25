@@ -8,4 +8,4 @@
 
 ## Ship
 
-Commit, push to `main`, and watch the GitHub Actions run. CI runs typecheck + tests, then auto-deploys to Cloudflare Workers. Do not run `pnpm run deploy` manually.
+Commit, push to `main`, and watch the GitHub Actions run. CI runs typecheck + tests, then auto-deploys to Cloudflare Workers.
