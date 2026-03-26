@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Env } from "../src/types.js";
+import { clearCache } from "../src/lib/cache.js";
 
 // ─── Mock yahoo-finance2 ────────────────────────────────────────────────────
 
@@ -22,18 +21,6 @@ vi.mock("yahoo-finance2", () => {
   };
 });
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function createMockKV(): KVNamespace {
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    put: vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn(),
-    list: vi.fn(),
-    getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
-}
-
 // ─── Mock fetch globally ────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
@@ -41,6 +28,7 @@ const mockFetch = vi.fn();
 beforeEach(async () => {
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
+  clearCache();
 
   // Reset yahoo-finance2 mocks to prevent call history leaking between tests
   const { __mock } = await import("yahoo-finance2");
@@ -55,12 +43,10 @@ afterEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PART 0: fetchJson / fetchText
+// PART 0: fetchJson
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Note: fetchJson/fetchText imports must be after vi.mock("yahoo-finance2")
-// because they share the retry module which may trigger module initialization.
-const { fetchJson, fetchText } = await import("../src/lib/fetch.js");
+const { fetchJson } = await import("../src/lib/fetch.js");
 
 describe("fetchJson", () => {
   it("returns parsed JSON on success", async () => {
@@ -99,30 +85,6 @@ describe("fetchJson", () => {
   });
 });
 
-describe("fetchText", () => {
-  it("returns text on success", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html>hello</html>"),
-    });
-
-    const result = await fetchText("https://example.com");
-    expect(result).toBe("<html>hello</html>");
-  });
-
-  it("throws on non-OK response", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-    });
-
-    await expect(fetchText("https://example.com/err")).rejects.toThrow(
-      "HTTP 500"
-    );
-  });
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // PART 0.5: Yahoo Finance wrappers (quoteSummary, getHistorical, getOptions)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,23 +101,6 @@ describe("quoteSummary", () => {
     const result = await quoteSummary("AAPL", ["price"]);
     expect(result).toHaveProperty("price");
     expect(result.price).toHaveProperty("regularMarketPrice", 150);
-  });
-
-  it("uses KV cache when provided", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).quoteSummary.mockResolvedValue({ price: {} });
-    const kv = createMockKV();
-
-    await quoteSummary("AAPL", ["price"], kv, 300);
-    expect(kv.get).toHaveBeenCalled();
-  });
-
-  it("works without KV cache", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).quoteSummary.mockResolvedValue({ price: {} });
-
-    const result = await quoteSummary("AAPL", ["price"]);
-    expect(result).toHaveProperty("price");
   });
 
   it("handles multiple modules", async () => {
@@ -200,15 +145,6 @@ describe("getHistorical", () => {
       expect.objectContaining({ interval: "1wk" })
     );
   });
-
-  it("uses KV cache when provided", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).historical.mockResolvedValue([]);
-    const kv = createMockKV();
-
-    await getHistorical("AAPL", { period1: "2024-01-01" }, kv, 900);
-    expect(kv.get).toHaveBeenCalled();
-  });
 });
 
 describe("getOptions", () => {
@@ -245,18 +181,16 @@ describe("getOptions", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PART 0.6: normalizeCode
+// PART 1: Tool exports are correct
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PART 1: Agent registers only the investor_tools_sandbox tool
-// ═══════════════════════════════════════════════════════════════════════════
+import { fetchCnnFearGreed, fetchCryptoFearGreed } from "../src/tools/fear-greed.js";
+import { fetchMarketMovers } from "../src/tools/market-movers.js";
+import { fetchNasdaqEarningsCalendar } from "../src/tools/earnings.js";
+import { calculateIndicator } from "../src/tools/technical-indicators.js";
 
-describe("InvestorAgent Registration", () => {
-  it("tool files export data functions (not register functions)", async () => {
-    // The agent.ts imports Durable Object APIs (cloudflare: protocol) which
-    // can't be loaded in Node/vitest. Instead verify the data function exports
-    // are correctly shaped.
+describe("Tool exports", () => {
+  it("tool files export data functions", async () => {
     expect(typeof fetchCnnFearGreed).toBe("function");
     expect(typeof fetchCryptoFearGreed).toBe("function");
     expect(typeof fetchMarketMovers).toBe("function");
@@ -266,14 +200,8 @@ describe("InvestorAgent Registration", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PART 2: Data Function Tests — test exported functions directly
+// PART 2: Data Function Tests
 // ═══════════════════════════════════════════════════════════════════════════
-
-import { fetchCnnFearGreed, fetchCryptoFearGreed } from "../src/tools/fear-greed.js";
-import { fetchMarketMovers } from "../src/tools/market-movers.js";
-
-import { fetchNasdaqEarningsCalendar } from "../src/tools/earnings.js";
-import { calculateIndicator } from "../src/tools/technical-indicators.js";
 
 describe("fetchCnnFearGreed", () => {
   it("returns fear and greed data from CNN API", async () => {
@@ -287,7 +215,7 @@ describe("fetchCnnFearGreed", () => {
       json: () => Promise.resolve(mockResponse),
     });
 
-    const result = await fetchCnnFearGreed(createMockKV());
+    const result = await fetchCnnFearGreed();
     expect(result).toHaveProperty("fear_and_greed");
     expect(result).toHaveProperty("market_volatility_vix");
   });
@@ -303,7 +231,7 @@ describe("fetchCnnFearGreed", () => {
       json: () => Promise.resolve(mockResponse),
     });
 
-    const result = await fetchCnnFearGreed(createMockKV());
+    const result = await fetchCnnFearGreed();
     expect(result).not.toHaveProperty("fear_and_greed_historical");
   });
 
@@ -317,7 +245,7 @@ describe("fetchCnnFearGreed", () => {
       json: () => Promise.resolve(mockResponse),
     });
 
-    const result = await fetchCnnFearGreed(createMockKV());
+    const result = await fetchCnnFearGreed();
     expect(result.fear_and_greed).not.toHaveProperty("data");
   });
 });
@@ -335,7 +263,7 @@ describe("fetchCryptoFearGreed", () => {
       json: () => Promise.resolve(mockResponse),
     });
 
-    const result = await fetchCryptoFearGreed(createMockKV());
+    const result = await fetchCryptoFearGreed();
     expect(result.value).toBe("72");
     expect(result.classification).toBe("Greed");
     expect(result.timestamp).toBe("1700000000");
@@ -351,7 +279,7 @@ describe("fetchMarketMovers", () => {
       ],
     });
 
-    const result = await fetchMarketMovers("gainers", 25, createMockKV());
+    const result = await fetchMarketMovers("gainers", 25);
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
     expect(result[0]).toHaveProperty("Symbol", "NVDA");
@@ -359,7 +287,7 @@ describe("fetchMarketMovers", () => {
 
   it("throws on invalid category", async () => {
     await expect(
-      fetchMarketMovers("invalid", 10, createMockKV())
+      fetchMarketMovers("invalid", 10)
     ).rejects.toThrow("Invalid category");
   });
 });
@@ -380,12 +308,12 @@ describe("fetchNasdaqEarningsCalendar", () => {
         }),
     });
 
-    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 100, createMockKV());
+    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 100);
 
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(2);
-    expect(result[0]).toHaveProperty("Symbol", "AAPL");
-    expect(result[0]).toHaveProperty("Date", "2024-03-15");
+    expect(result[0]).toHaveProperty("symbol", "AAPL");
+    expect(result[0]).toHaveProperty("date", "2024-03-15");
   });
 
   it("returns empty array when API returns no rows", async () => {
@@ -394,7 +322,7 @@ describe("fetchNasdaqEarningsCalendar", () => {
       json: () => Promise.resolve({ data: { rows: null, headers: null } }),
     });
 
-    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 100, createMockKV());
+    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 100);
     expect(result).toEqual([]);
   });
 
@@ -412,7 +340,7 @@ describe("fetchNasdaqEarningsCalendar", () => {
         }),
     });
 
-    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 3, createMockKV());
+    const result = await fetchNasdaqEarningsCalendar("2024-03-15", 3);
     expect(result).toHaveLength(3);
   });
 });
@@ -433,17 +361,11 @@ describe("calculateIndicator", () => {
     const result = await calculateIndicator(
       "AAPL",
       "SMA",
-      { period: "1y", timeperiod: 14 },
-      createMockKV()
+      { period1: "2023-01-01", timeperiod: 14 }
     );
 
-    expect(result).toHaveProperty("prices");
-    expect(result).toHaveProperty("values");
-    expect(Array.isArray(result.prices)).toBe(true);
-    expect(Array.isArray(result.values)).toBe(true);
-
-    // Values should be numbers or null, not formatted strings
-    const firstNonNull = result.values.find((v) => v.sma !== null);
+    expect(Array.isArray(result)).toBe(true);
+    const firstNonNull = result.find((v) => v.sma !== null);
     expect(typeof firstNonNull?.sma).toBe("number");
   });
 
@@ -455,7 +377,7 @@ describe("calculateIndicator", () => {
     ]);
 
     await expect(
-      calculateIndicator("AAPL", "SMA", { timeperiod: 14 }, createMockKV())
+      calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
     ).rejects.toThrow("Insufficient data for SMA");
   });
 
@@ -474,11 +396,10 @@ describe("calculateIndicator", () => {
     const result = await calculateIndicator(
       "AAPL",
       "RSI",
-      { period: "1y", timeperiod: 14 },
-      createMockKV()
+      { period1: "2023-01-01", timeperiod: 14 }
     );
 
-    expect(result.values.some((v) => v.rsi !== null)).toBe(true);
+    expect(result.some((v) => v.rsi !== null)).toBe(true);
   });
 
   it("calculates MACD indicator", async () => {
@@ -496,11 +417,10 @@ describe("calculateIndicator", () => {
     const result = await calculateIndicator(
       "AAPL",
       "MACD",
-      { period: "1y" },
-      createMockKV()
+      { period1: "2023-01-01" }
     );
 
-    const withValues = result.values.find((v) => v.macd !== null);
+    const withValues = result.find((v) => v.macd !== null);
     expect(withValues).toBeDefined();
     expect(withValues).toHaveProperty("macd");
     expect(withValues).toHaveProperty("signal");
@@ -522,12 +442,11 @@ describe("calculateIndicator", () => {
     const result = await calculateIndicator(
       "AAPL",
       "EMA",
-      { period: "1y", timeperiod: 14 },
-      createMockKV()
+      { period1: "2023-01-01", timeperiod: 14 }
     );
 
-    expect(result.values.some((v) => v.ema !== null)).toBe(true);
-    const firstNonNull = result.values.find((v) => v.ema !== null);
+    expect(result.some((v) => v.ema !== null)).toBe(true);
+    const firstNonNull = result.find((v) => v.ema !== null);
     expect(typeof firstNonNull?.ema).toBe("number");
   });
 
@@ -546,11 +465,10 @@ describe("calculateIndicator", () => {
     const result = await calculateIndicator(
       "AAPL",
       "BBANDS",
-      { period: "1y", timeperiod: 14, nbdev: 2 },
-      createMockKV()
+      { period1: "2023-01-01", timeperiod: 14, nbdev: 2 }
     );
 
-    const withValues = result.values.find((v) => v.upper !== null);
+    const withValues = result.find((v) => v.upper !== null);
     expect(withValues).toBeDefined();
     expect(withValues).toHaveProperty("upper");
     expect(withValues).toHaveProperty("middle");
@@ -570,7 +488,7 @@ describe("calculateIndicator", () => {
     (__mock as any).historical.mockResolvedValue(history);
 
     await expect(
-      calculateIndicator("AAPL", "INVALID" as any, {}, createMockKV())
+      calculateIndicator("AAPL", "INVALID" as any, { period1: "2023-01-01" })
     ).rejects.toThrow("Unsupported indicator");
   });
 });

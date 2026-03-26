@@ -1,36 +1,21 @@
 # Dependencies
 node_modules/
 
-# Python cache
-**/__pycache__
-*.pyc
-*.pyo
-*.pyd
-.cache
-
 # Environment and tools
 .claude
-.venv
 .env
 
 # Build and distribution
-dist
-yfinance.cache
-investor_agent/_version.py
-
-# Test files
-test_*.py
-*_test.py
-
-# Testing and coverage
-.coverage
-.pytest_cache/
+dist/
 
 # IDE
 .vscode/
 .idea/
 
+# Cloudflare
+wrangler.jsonc
+.wrangler/
+
 # OS
 .DS_Store
 Thumbs.db
-.wrangler/

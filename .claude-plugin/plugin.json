@@ -1,7 +1,7 @@
 {
   "name": "investor",
-  "version": "2.0.0",
-  "description": "Financial research via investor_tools_sandbox - LLM writes JS to orchestrate data functions in a sandboxed V8 isolate",
+  "version": "3.0.0",
+  "description": "Financial research MCP server — Yahoo Finance quotes, historical prices, options, market movers, earnings, fear & greed, and technical indicators",
   "author": {
     "name": "Ferdous",
     "email": "ferdous@hey.com"
@@ -13,8 +13,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "investor-agent": {
-      "type": "url",
-      "url": "https://investor.ferdousbhai.com/mcp"
+      "command": "npx",
+      "args": ["-y", "investor-agent"]
     }
   }
 }

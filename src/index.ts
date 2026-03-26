@@ -1,18 +1,16 @@
-import { InvestorAgent } from "./agent.js";
+#!/usr/bin/env node
 
-// Export the Durable Object class for wrangler
-export { InvestorAgent };
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createServer } from "./server.js";
 
-const mcpHandler = InvestorAgent.serve("/mcp", {
-  binding: "MCP_OBJECT",
-  corsOptions: { origin: "*" },
+async function main() {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("investor-agent MCP server running on stdio");
+}
+
+main().catch((error) => {
+  console.error("Fatal error:", error);
+  process.exit(1);
 });
-
-export default {
-  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
-    if (request.method === "GET" && new URL(request.url).pathname === "/") {
-      return new Response("OK");
-    }
-    return mcpHandler.fetch(request, env, ctx);
-  },
-} satisfies ExportedHandler;

@@ -1,7 +1,3 @@
-/**
- * Exponential backoff retry utility.
- * Replaces tenacity from the Python version.
- */
 export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: {
@@ -38,23 +34,7 @@ export async function withRetry<T>(
 
 function isRetryableError(error: unknown): boolean {
   const msg = String(error).toLowerCase();
-  const retryTerms = [
-    "rate limit",
-    "too many requests",
-    "temporarily blocked",
-    "timeout",
-    "connection",
-    "network",
-    "429",
-    "502",
-    "503",
-    "504",
-  ];
-  if (retryTerms.some((t) => msg.includes(t))) return true;
-
-  if (error instanceof Response) {
-    return error.status >= 500 || error.status === 429;
-  }
-
+  if (["rate limit", "too many requests", "temporarily blocked", "timeout", "connection", "network", "429", "502", "503", "504"].some((t) => msg.includes(t))) return true;
+  if (error instanceof Response) return error.status >= 500 || error.status === 429;
   return false;
 }

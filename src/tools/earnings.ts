@@ -1,42 +1,35 @@
 import { getOrFetch } from "../lib/cache.js";
 import { fetchJson } from "../lib/fetch.js";
-import { CacheTTL, NASDAQ_HEADERS } from "../types.js";
+import { CacheTTL } from "../lib/cache.js";
 
-/** Fetch NASDAQ earnings calendar for a specific date. Returns raw row objects. */
+const NASDAQ_HEADERS = { Referer: "https://www.nasdaq.com/" };
+
 export async function fetchNasdaqEarningsCalendar(
   date: string | undefined,
-  limit: number,
-  kv: KVNamespace
+  limit: number
 ): Promise<Array<Record<string, unknown>>> {
   const dateStr = date ?? new Date().toISOString().slice(0, 10);
-  const cacheKey = `earnings_cal:${dateStr}`;
 
-  const rows = await getOrFetch<Array<Record<string, unknown>>>(
-    kv,
-    cacheKey,
+  return getOrFetch<Array<Record<string, unknown>>>(
+    `earnings_cal:${dateStr}`,
     async () => {
-      const url = `https://api.nasdaq.com/api/calendar/earnings?date=${dateStr}`;
       const raw = await fetchJson<{
-        data?: {
-          rows?: Array<Record<string, string>>;
-          headers?: Record<string, string>;
-        };
-      }>(url, NASDAQ_HEADERS);
+        data?: { rows?: Array<Record<string, string>> };
+      }>(`https://api.nasdaq.com/api/calendar/earnings?date=${dateStr}`, NASDAQ_HEADERS);
 
       const rawRows = raw.data?.rows;
-      const headers = raw.data?.headers;
-      if (!rawRows || !headers) return [];
+      if (!rawRows) return [];
 
-      return rawRows.map((row) => {
-        const mapped: Record<string, unknown> = { Date: dateStr };
-        for (const [key, label] of Object.entries(headers)) {
-          mapped[label] = row[key] ?? "";
-        }
-        return mapped;
-      });
+      return rawRows.map((row) => ({
+        date: dateStr,
+        symbol: row.symbol,
+        name: row.name,
+        time: row.time,
+        quarter: row.fiscalQuarterEnding,
+        epsForecast: row.epsForecast,
+        lastYearEPS: row.lastYearEPS,
+      }));
     },
     CacheTTL.EARNINGS_CALENDAR
-  );
-
-  return rows.slice(0, limit);
+  ).then(rows => rows.slice(0, limit));
 }

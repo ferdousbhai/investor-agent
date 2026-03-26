@@ -1,40 +1,29 @@
 import { getOrFetch } from "../lib/cache.js";
 import { clamp } from "../lib/validation.js";
-import { CacheTTL } from "../types.js";
+import { CacheTTL } from "../lib/cache.js";
 import { withRetry } from "../lib/retry.js";
 import { yf } from "../lib/yahoo.js";
 
-/** Yahoo Finance screener IDs for market movers */
 const SCREENER_MAP: Record<string, string> = {
   "gainers": "day_gainers",
   "losers": "day_losers",
   "most-active": "most_actives",
 };
 
-/** Fetch top market movers using yahoo-finance2 screener API. */
+const MAX_FETCH = 100;
+
 export async function fetchMarketMovers(
   category: string,
-  count: number,
-  kv: KVNamespace
+  count: number
 ): Promise<Array<Record<string, unknown>>> {
-  const safeCount = clamp(count, 1, 100);
   const screenerId = SCREENER_MAP[category];
-
-  if (!screenerId) {
-    throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
-  }
-
-  const cacheKey = `movers:${category}:${safeCount}`;
+  if (!screenerId) throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
 
   const rows = await getOrFetch<Array<Record<string, unknown>>>(
-    kv,
-    cacheKey,
+    `movers:${category}`,
     async () => {
-      const result = await withRetry(() =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (yf as any).screener(screenerId, { count: safeCount })
-      ) as Record<string, unknown>;
-
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await withRetry(() => (yf as any).screener(screenerId, { count: MAX_FETCH })) as Record<string, unknown>;
       const quotes = (result as { quotes?: Array<Record<string, unknown>> }).quotes;
       if (!quotes || !Array.isArray(quotes)) return [];
 
@@ -51,5 +40,5 @@ export async function fetchMarketMovers(
     CacheTTL.MARKET_MOVERS
   );
 
-  return rows.slice(0, safeCount);
+  return rows.slice(0, clamp(count, 1, MAX_FETCH));
 }

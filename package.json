@@ -1,17 +1,42 @@
 {
   "name": "investor-agent",
-  "version": "2.0.0",
-  "private": true,
+  "version": "3.0.0",
+  "description": "Financial research MCP server — Yahoo Finance quotes, historical prices, options, market movers, earnings, fear & greed, and technical indicators (SMA, EMA, RSI, MACD, BBANDS).",
   "type": "module",
+  "bin": {
+    "investor-agent": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsc && shx chmod +x dist/index.js",
+    "prepare": "npm run build",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "finance",
+    "stocks",
+    "investing",
+    "market-analysis",
+    "trading",
+    "yahoo-finance",
+    "technical-analysis"
+  ],
+  "author": "Ferdous <ferdous@hey.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ferdousbhai/investor-agent.git"
   },
   "dependencies": {
-    "@cloudflare/codemode": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "agents": "^0.7.0",
     "trading-signals": "^7.4.0",
@@ -20,6 +45,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/node": "^22.0.0",
+    "shx": "^0.3.4",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
     "wrangler": "^4.73.0"

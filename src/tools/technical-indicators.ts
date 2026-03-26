@@ -1,14 +1,14 @@
 import { SMA, EMA, RSI, MACD, BollingerBands } from "trading-signals";
-import { validateTicker } from "../lib/validation.js";
-import { getHistorical, periodToDates } from "../lib/yahoo.js";
+import { getHistorical } from "../lib/yahoo.js";
 import type { HistoricalRow } from "../lib/yahoo-types.js";
 import { getOrFetch } from "../lib/cache.js";
-import { CacheTTL } from "../types.js";
+import { CacheTTL } from "../lib/cache.js";
 
 export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BBANDS";
 
 export interface IndicatorOpts {
-  period?: string;
+  period1: string;
+  period2?: string;
   timeperiod?: number;
   fastperiod?: number;
   slowperiod?: number;
@@ -17,10 +17,7 @@ export interface IndicatorOpts {
   numResults?: number;
 }
 
-export interface IndicatorResult {
-  prices: Array<Record<string, unknown>>;
-  values: Array<Record<string, unknown>>;
-}
+export type IndicatorResult = Array<Record<string, unknown>>;
 
 function formatDate(row: HistoricalRow): string {
   const d = row.date;
@@ -29,18 +26,13 @@ function formatDate(row: HistoricalRow): string {
   return String(d);
 }
 
-/**
- * Calculate a technical indicator for a ticker. Returns raw numeric values
- * (not pre-formatted strings) for maximum composability in the sandbox.
- */
 export async function calculateIndicator(
   ticker: string,
   indicator: IndicatorType,
-  opts: IndicatorOpts,
-  kv: KVNamespace
+  opts: IndicatorOpts
 ): Promise<IndicatorResult> {
-  const symbol = validateTicker(ticker);
-  const period = opts.period ?? "1y";
+  const { period1 } = opts;
+  const period2 = opts.period2;
   const timeperiod = opts.timeperiod ?? 14;
   const fastperiod = opts.fastperiod ?? 12;
   const slowperiod = opts.slowperiod ?? 26;
@@ -48,45 +40,25 @@ export async function calculateIndicator(
   const nbdev = opts.nbdev ?? 2;
   const numResults = opts.numResults ?? 100;
 
-  const { period1, period2 } = periodToDates(period);
+  let cacheKey = `ta:${ticker}:${indicator}:${period1}:${period2 ?? ""}`;
+  if (indicator === "MACD") cacheKey += `:${fastperiod}:${slowperiod}:${signalperiod}`;
+  else if (indicator === "BBANDS") cacheKey += `:${timeperiod}:${nbdev}`;
+  else cacheKey += `:${timeperiod}`;
 
-  // Build cache key with only parameters relevant to the specific indicator
-  let cacheKey = `ta:${symbol}:${indicator}:${period}`;
-  if (indicator === "MACD") {
-    cacheKey += `:${fastperiod}:${slowperiod}:${signalperiod}`;
-  } else if (indicator === "BBANDS") {
-    cacheKey += `:${timeperiod}:${nbdev}`;
-  } else {
-    cacheKey += `:${timeperiod}`;
-  }
-
-  // Cache the full result (all rows), then slice to numResults after retrieval.
-  // This prevents numResults from fragmenting the cache.
   const full = await getOrFetch<IndicatorResult>(
-    kv,
     cacheKey,
     async () => {
-      const history = await getHistorical(symbol, { period1, period2, interval: "1d" }, kv, CacheTTL.TECHNICALS);
+      const history = await getHistorical(ticker, { period1, period2, interval: "1d" });
+      if (!history || history.length === 0) throw new Error(`No historical data found for ${ticker}`);
 
-      if (!history || history.length === 0) {
-        throw new Error(`No historical data found for ${symbol}`);
-      }
-
-      // Pre-compute dates to avoid duplicate toISOString calls
       const dates = history.map(formatDate);
-
       const minRequired: Record<string, number> = {
-        SMA: timeperiod,
-        EMA: timeperiod * 2,
-        RSI: timeperiod + 1,
-        MACD: slowperiod + signalperiod,
-        BBANDS: timeperiod,
+        SMA: timeperiod, EMA: timeperiod * 2, RSI: timeperiod + 1,
+        MACD: slowperiod + signalperiod, BBANDS: timeperiod,
       };
 
       if (history.length < (minRequired[indicator] ?? 0)) {
-        throw new Error(
-          `Insufficient data for ${indicator}: ${history.length} points, need ${minRequired[indicator]}`
-        );
+        throw new Error(`Insufficient data for ${indicator}: ${history.length} points, need ${minRequired[indicator]}`);
       }
 
       const indicatorRows: Array<Record<string, unknown>> = [];
@@ -95,35 +67,22 @@ export async function calculateIndicator(
         const sma = new SMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
           const result = sma.update(Number(history[i].close ?? 0), false);
-          indicatorRows.push({
-            date: dates[i],
-            sma: result !== null ? Number(result) : null,
-          });
+          indicatorRows.push({ date: dates[i], sma: result !== null ? Number(result) : null });
         }
       } else if (indicator === "EMA") {
         const ema = new EMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
           const result = ema.update(Number(history[i].close ?? 0), false);
-          indicatorRows.push({
-            date: dates[i],
-            ema: ema.isStable ? Number(result) : null,
-          });
+          indicatorRows.push({ date: dates[i], ema: ema.isStable ? Number(result) : null });
         }
       } else if (indicator === "RSI") {
         const rsi = new RSI(timeperiod);
         for (let i = 0; i < history.length; i++) {
           const result = rsi.update(Number(history[i].close ?? 0), false);
-          indicatorRows.push({
-            date: dates[i],
-            rsi: result !== null ? Number(result) : null,
-          });
+          indicatorRows.push({ date: dates[i], rsi: result !== null ? Number(result) : null });
         }
       } else if (indicator === "MACD") {
-        const macd = new MACD(
-          new EMA(fastperiod),
-          new EMA(slowperiod),
-          new EMA(signalperiod)
-        );
+        const macd = new MACD(new EMA(fastperiod), new EMA(slowperiod), new EMA(signalperiod));
         for (let i = 0; i < history.length; i++) {
           const result = macd.update(Number(history[i].close ?? 0), false);
           indicatorRows.push({
@@ -148,23 +107,10 @@ export async function calculateIndicator(
         throw new Error(`Unsupported indicator: ${indicator}`);
       }
 
-      const priceRows = history.map((row: HistoricalRow, i: number) => ({
-        date: dates[i],
-        open: row.open,
-        high: row.high,
-        low: row.low,
-        close: row.close,
-        volume: row.volume,
-      }));
-
-      return { prices: priceRows, values: indicatorRows };
+      return indicatorRows;
     },
     CacheTTL.TECHNICALS
   );
 
-  // Slice to numResults after cache retrieval
-  return {
-    prices: full.prices.slice(-numResults),
-    values: full.values.slice(-numResults),
-  };
+  return full.slice(-numResults);
 }

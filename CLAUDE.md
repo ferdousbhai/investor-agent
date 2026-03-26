@@ -4,6 +4,8 @@
 
 - `pnpm run test` — run tests
 - `pnpm run typecheck` — type check
+- `pnpm run build` — compile to dist/
+
 ## Ship
 
-Commit, push to `main`, and watch the GitHub Actions run. CI runs typecheck + tests, then auto-deploys to Cloudflare Workers.
+Commit and push to `main`. CI runs typecheck + tests.
