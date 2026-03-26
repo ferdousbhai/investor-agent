@@ -12,14 +12,14 @@ const { t: normalizeCode } = await import(
 
 describe("normalizeCode", () => {
   it("passes through valid async arrow function", () => {
-    const code = 'async () => { return await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }';
+    const code = 'async () => { return await investor_tools_sandbox.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }';
     const result = normalizeCode(code);
     expect(result).toContain("async");
-    expect(result).toContain("codemode.quoteSummary");
+    expect(result).toContain("investor_tools_sandbox.quoteSummary");
   });
 
   it("wraps bare statements in async arrow function", () => {
-    const code = 'const data = await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] });\ndata';
+    const code = 'const data = await investor_tools_sandbox.quoteSummary({ symbol: "AAPL", modules: ["price"] });\ndata';
     const result = normalizeCode(code);
     expect(result).toContain("async () =>");
     expect(result).toContain("return");
@@ -38,7 +38,7 @@ describe("normalizeCode", () => {
   });
 
   it("wraps function declaration", () => {
-    const code = 'async function getData() { return await codemode.getCnnFearGreed({}); }';
+    const code = 'async function getData() { return await investor_tools_sandbox.getCnnFearGreed({}); }';
     const result = normalizeCode(code);
     expect(result).toContain("async () =>");
     expect(result).toContain("getData");

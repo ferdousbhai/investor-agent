@@ -249,7 +249,7 @@ describe("getOptions", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PART 1: Agent registers only the codemode tool
+// PART 1: Agent registers only the investor_tools_sandbox tool
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("InvestorAgent Registration", () => {

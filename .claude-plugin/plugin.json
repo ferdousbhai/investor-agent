@@ -1,7 +1,7 @@
 {
   "name": "investor",
   "version": "2.0.0",
-  "description": "Financial research via codemode - LLM writes JS to orchestrate 13 data functions in a sandboxed V8 isolate",
+  "description": "Financial research via investor_tools_sandbox - LLM writes JS to orchestrate data functions in a sandboxed V8 isolate",
   "author": {
     "name": "Ferdous",
     "email": "ferdous@hey.com"

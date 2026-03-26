@@ -31,7 +31,7 @@ function formatDate(row: HistoricalRow): string {
 
 /**
  * Calculate a technical indicator for a ticker. Returns raw numeric values
- * (not pre-formatted strings) for maximum composability in codemode.
+ * (not pre-formatted strings) for maximum composability in the sandbox.
  */
 export async function calculateIndicator(
   ticker: string,

@@ -51,14 +51,14 @@ class RateLimiter {
 /** Max response size in characters (~6K tokens). Matches Cloudflare's truncation strategy. */
 const MAX_RESPONSE_CHARS = 24_000;
 
-/** Compact type definitions for the codemode sandbox prompt.
+/** Compact type definitions for the investor_tools_sandbox prompt.
  * Hand-crafted to minimize token usage. Only includes JSDoc where
  * the function name doesn't convey the behavior.
  */
 const TYPES_DEF = `
 quoteSummary modules: assetProfile, balanceSheetHistory, balanceSheetHistoryQuarterly, calendarEvents, cashflowStatementHistory, cashflowStatementHistoryQuarterly, defaultKeyStatistics, earnings, earningsHistory, earningsTrend, financialData, fundOwnership, incomeStatementHistory, incomeStatementHistoryQuarterly, indexTrend, industryTrend, insiderHolders, insiderTransactions, institutionOwnership, majorHoldersBreakdown, netSharePurchaseActivity, price, recommendationTrend, secFilings, summaryDetail, summaryProfile, upgradeDowngradeHistory.
 
-declare const codemode: {
+declare const investor_tools_sandbox: {
   quoteSummary(input: { symbol: string; modules: string[] }): Promise<unknown>;
   /** Returns [{ date, open, high, low, close, volume }]. */
   getHistorical(input: { symbol: string; period1: string; period2?: string; interval?: "1d"|"1wk"|"1mo" }): Promise<unknown>;
@@ -155,12 +155,12 @@ export class InvestorAgent extends McpAgent<Env> {
     });
 
     this.server.tool(
-      "codemode",
+      "investor_tools_sandbox",
       `Execute JavaScript to research financial markets. Available: quotes, historical prices, options chains, technical indicators (SMA/EMA/RSI/MACD/BBANDS), market movers, earnings calendar, and fear & greed indices.
 
 Code MUST be an async arrow function expression (runtime wraps it as \`(CODE)()\`).
-Correct: \`async () => { return await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }\`
-Wrong: \`const data = await codemode.quoteSummary(...); return data;\`
+Correct: \`async () => { return await investor_tools_sandbox.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }\`
+Wrong: \`const data = await investor_tools_sandbox.quoteSummary(...); return data;\`
 
 ${TYPES_DEF}`,
       { code: z.string().describe("Async arrow function expression") },
@@ -168,7 +168,7 @@ ${TYPES_DEF}`,
         const limit = rateLimiter.check();
         if (!limit.allowed) {
           const retryAfter = Math.ceil((limit.retryAfterMs ?? 60000) / 1000);
-          console.warn(`[codemode] rate limited — retry in ${retryAfter}s`);
+          console.warn(`[investor_tools_sandbox] rate limited — retry in ${retryAfter}s`);
           return {
             content: [
               {
@@ -184,19 +184,19 @@ ${TYPES_DEF}`,
         const result = await executor.execute(normalizedCode, toolFns);
 
         if (result.error) {
-          console.error(`[codemode] error (${limit.remaining} remaining): ${result.error}`);
+          console.error(`[investor_tools_sandbox] error (${limit.remaining} remaining): ${result.error}`);
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Error: ${result.error}\n\nHint: code must be an async arrow function, e.g. async () => { return await codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }`,
+                text: `Error: ${result.error}\n\nHint: code must be an async arrow function, e.g. async () => { return await investor_tools_sandbox.quoteSummary({ symbol: "AAPL", modules: ["price"] }); }`,
               },
             ],
             isError: true,
           };
         }
 
-        console.log(`[codemode] ok (${limit.remaining} remaining, ${result.logs?.length ?? 0} logs)`);
+        console.log(`[investor_tools_sandbox] ok (${limit.remaining} remaining, ${result.logs?.length ?? 0} logs)`);
         const parts: string[] = [];
         if (result.logs && result.logs.length > 0) {
           parts.push(`Logs:\n${result.logs.join("\n")}`);

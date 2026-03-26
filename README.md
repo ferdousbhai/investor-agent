@@ -3,7 +3,7 @@
 > **Warning**
 > **Migration from v1.x (Python):** The Python MCP server previously published on PyPI as `investor-agent` is deprecated. v2.0 is a complete rewrite in TypeScript on Cloudflare Workers. The PyPI package will not receive further updates.
 
-A financial research MCP server that exposes a single **codemode** tool with 5 sandbox functions. The LLM writes JavaScript that orchestrates data fetching, calculations, and result assembly in one round trip.
+A financial research MCP server that exposes a single **investor_tools_sandbox** tool with 5 sandbox functions. The LLM writes JavaScript that orchestrates data fetching, calculations, and result assembly in one round trip.
 
 ## MCP client configuration
 
@@ -28,9 +28,9 @@ Health check: `GET https://investor.ferdousbhai.com/` returns `200 OK`.
 - **Data sources:** [yahoo-finance2](https://www.npmjs.com/package/yahoo-finance2) v3, CNN Fear & Greed, [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) Crypto Fear & Greed, NASDAQ API
 - **Technical analysis:** [trading-signals](https://www.npmjs.com/package/trading-signals) (SMA, EMA, RSI, MACD, Bollinger Bands)
 
-## The `codemode` tool
+## The `investor_tools_sandbox` tool
 
-The server exposes a single MCP tool called `codemode`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All functions are available on the `codemode` object and accept a single argument object.
+The server exposes a single MCP tool called `investor_tools_sandbox`. It accepts a `code` parameter containing JavaScript that runs in a sandboxed V8 isolate. All functions are available on the `investor_tools_sandbox` object and accept a single argument object.
 
 ### Sandbox functions
 
@@ -51,8 +51,8 @@ Fetch the current price of AAPL and calculate its 14-day RSI in a single call:
 ```javascript
 async () => {
   const [summary, rsi] = await Promise.all([
-    codemode.quoteSummary({ symbol: "AAPL", modules: ["price"] }),
-    codemode.calculateIndicator({ ticker: "AAPL", indicator: "RSI", timeperiod: 14, numResults: 1 })
+    investor_tools_sandbox.quoteSummary({ symbol: "AAPL", modules: ["price"] }),
+    investor_tools_sandbox.calculateIndicator({ ticker: "AAPL", indicator: "RSI", timeperiod: 14, numResults: 1 })
   ]);
   return {
     price: summary.price.regularMarketPrice,
@@ -66,8 +66,8 @@ Compare market and crypto sentiment:
 ```javascript
 async () => {
   const [stock, crypto] = await Promise.all([
-    codemode.getMarketData({ source: "fear-greed" }),
-    codemode.getMarketData({ source: "fear-greed", market: "crypto" })
+    investor_tools_sandbox.getMarketData({ source: "fear-greed" }),
+    investor_tools_sandbox.getMarketData({ source: "fear-greed", market: "crypto" })
   ]);
   return { stock: stock.fear_and_greed, crypto };
 }
