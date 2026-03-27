@@ -148,7 +148,7 @@ export function createServer(): McpServer {
     {
       ticker: z.string().describe("Ticker symbol (e.g. AAPL)"),
       indicator: z.enum(["SMA", "EMA", "RSI", "MACD", "BBANDS"]).describe("Indicator type"),
-      period1: z.string().describe("Start date (YYYY-MM-DD)"),
+      period1: z.string().optional().describe("Start date (YYYY-MM-DD). Defaults to 1 year ago."),
       period2: z.string().optional().describe("End date (YYYY-MM-DD). Defaults to today."),
       timeperiod: z.number().optional().describe("Indicator period (e.g. 14 for RSI). Defaults to 14."),
       fastperiod: z.number().optional().describe("MACD fast period. Defaults to 12."),

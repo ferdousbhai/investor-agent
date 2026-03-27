@@ -7,7 +7,7 @@ import { CacheTTL } from "../lib/cache.js";
 export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BBANDS";
 
 export interface IndicatorOpts {
-  period1: string;
+  period1?: string;
   period2?: string;
   timeperiod?: number;
   fastperiod?: number;
@@ -31,7 +31,7 @@ export async function calculateIndicator(
   indicator: IndicatorType,
   opts: IndicatorOpts
 ): Promise<IndicatorResult> {
-  const { period1 } = opts;
+  const period1 = opts.period1 ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   const period2 = opts.period2;
   const timeperiod = opts.timeperiod ?? 14;
   const fastperiod = opts.fastperiod ?? 12;
