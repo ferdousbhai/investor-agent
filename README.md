@@ -15,6 +15,10 @@ Financial research MCP server for long-term investors.
 }
 ```
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/ferdousbhai-investor-agent).
+
 ## Tools
 
 | Tool | Description |
