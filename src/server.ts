@@ -7,6 +7,36 @@ import { fetchMarketMovers } from "./tools/market-movers.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
 import { calculateIndicator } from "./tools/technical-indicators.js";
 
+const QUOTE_SUMMARY_MODULES = [
+  "assetProfile",
+  "balanceSheetHistory",
+  "balanceSheetHistoryQuarterly",
+  "calendarEvents",
+  "cashflowStatementHistory",
+  "cashflowStatementHistoryQuarterly",
+  "defaultKeyStatistics",
+  "earnings",
+  "earningsHistory",
+  "earningsTrend",
+  "financialData",
+  "fundOwnership",
+  "incomeStatementHistory",
+  "incomeStatementHistoryQuarterly",
+  "indexTrend",
+  "industryTrend",
+  "insiderHolders",
+  "insiderTransactions",
+  "institutionOwnership",
+  "majorHoldersBreakdown",
+  "netSharePurchaseActivity",
+  "price",
+  "recommendationTrend",
+  "secFilings",
+  "summaryDetail",
+  "summaryProfile",
+  "upgradeDowngradeHistory",
+] as const satisfies readonly QuoteSummaryModule[];
+
 const MAX_CALLS = 30;
 const WINDOW_MS = 60_000;
 const callTimestamps: number[] = [];
@@ -42,24 +72,24 @@ export function createServer(): McpServer {
 
   server.tool(
     "get_stock_info",
-    "Look up stock data from Yahoo Finance. Pick one or more modules: price, summaryDetail, financialData, defaultKeyStatistics (P/E, PEG, beta, short ratio, float), earnings, earningsHistory, earningsTrend, incomeStatementHistory, incomeStatementHistoryQuarterly, balanceSheetHistory, balanceSheetHistoryQuarterly, cashflowStatementHistory, cashflowStatementHistoryQuarterly, recommendationTrend, upgradeDowngradeHistory, institutionOwnership, fundOwnership, insiderHolders, insiderTransactions, majorHoldersBreakdown, netSharePurchaseActivity (insider net buy/sell), assetProfile, summaryProfile, calendarEvents, secFilings (10-K, 10-Q), indexTrend (S&P 500 estimates), industryTrend (industry estimates).",
+    "Yahoo Finance quote summary. Choose modules for fundamentals, financials, earnings, ownership, profile, filings, or trends.",
     {
-      symbol: z.string().describe("Ticker symbol (e.g. AAPL)"),
-      modules: z.array(z.string()).describe("Quote summary modules to fetch"),
+      symbol: z.string().describe("Ticker, e.g. AAPL."),
+      modules: z.array(z.enum(QUOTE_SUMMARY_MODULES)).describe("Yahoo quoteSummary modules to fetch."),
     },
     ({ symbol, modules }) =>
-      handleTool(() => quoteSummary(symbol, modules as QuoteSummaryModule[]))
+      handleTool(() => quoteSummary(symbol, [...modules]))
   );
 
   server.tool(
     "historical_prices",
-    "Get historical OHLCV price data for a stock.",
+    "Historical OHLCV prices.",
     {
-      symbol: z.string().describe("Ticker symbol (e.g. AAPL)"),
-      period1: z.string().optional().describe("Start date (YYYY-MM-DD). Defaults to 1 year ago."),
-      period2: z.string().optional().describe("End date (YYYY-MM-DD). Defaults to today."),
-      interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Data interval. Defaults to 1wk."),
-      limit: z.number().optional().describe("Max rows to return (most recent). Defaults to 100."),
+      symbol: z.string().describe("Ticker, e.g. AAPL."),
+      period1: z.string().optional().describe("Start YYYY-MM-DD; default 1 year ago."),
+      period2: z.string().optional().describe("End YYYY-MM-DD; default today."),
+      interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Default 1wk."),
+      limit: z.number().optional().describe("Most recent rows; default 100."),
     },
     ({ symbol, period1, period2, interval, limit }) =>
       handleTool(async () => {
@@ -71,14 +101,14 @@ export function createServer(): McpServer {
 
   server.tool(
     "get_options",
-    "Get options contracts for a stock. Without a date, returns available expirations. With a date, returns contracts sorted by open interest.",
+    "Options chain. Omit date for expirations; set date for contracts sorted by open interest.",
     {
-      symbol: z.string().describe("Ticker symbol (e.g. AAPL)"),
-      date: z.string().optional().describe("Expiration date (YYYY-MM-DD)"),
-      option_type: z.enum(["calls", "puts"]).optional().describe("Filter by option type"),
-      strike_min: z.number().optional().describe("Minimum strike price"),
-      strike_max: z.number().optional().describe("Maximum strike price"),
-      limit: z.number().optional().describe("Max contracts per type. Defaults to 25."),
+      symbol: z.string().describe("Ticker, e.g. AAPL."),
+      date: z.string().optional().describe("Expiration YYYY-MM-DD."),
+      option_type: z.enum(["calls", "puts"]).optional().describe("Optional calls/puts filter."),
+      strike_min: z.number().optional().describe("Minimum strike."),
+      strike_max: z.number().optional().describe("Maximum strike."),
+      limit: z.number().optional().describe("Contracts per type; default 25."),
     },
     ({ symbol, date, option_type, strike_min, strike_max, limit }) =>
       handleTool(async () => {
@@ -112,10 +142,10 @@ export function createServer(): McpServer {
 
   server.tool(
     "market_movers",
-    "Get today's top gaining, losing, or most actively traded stocks.",
+    "Today's top gainers, losers, or most-active stocks.",
     {
-      category: z.enum(["gainers", "losers", "most-active"]).optional().describe("Defaults to most-active."),
-      count: z.number().optional().describe("Number of results. Defaults to 25."),
+      category: z.enum(["gainers", "losers", "most-active"]).optional().describe("Default most-active."),
+      count: z.number().optional().describe("Default 25."),
     },
     ({ category, count }) =>
       handleTool(() => fetchMarketMovers(category ?? "most-active", count ?? 25))
@@ -123,10 +153,10 @@ export function createServer(): McpServer {
 
   server.tool(
     "earnings_calendar",
-    "Get upcoming earnings reports from NASDAQ for a given date.",
+    "NASDAQ earnings calendar.",
     {
-      date: z.string().optional().describe("Date (YYYY-MM-DD). Defaults to today."),
-      count: z.number().optional().describe("Number of results. Defaults to 25."),
+      date: z.string().optional().describe("YYYY-MM-DD; default today."),
+      count: z.number().optional().describe("Default 25."),
     },
     ({ date, count }) =>
       handleTool(() => fetchNasdaqEarningsCalendar(date, count ?? 25))
@@ -134,9 +164,9 @@ export function createServer(): McpServer {
 
   server.tool(
     "fear_greed_index",
-    "Get the current Fear & Greed index — CNN for the stock market, Alternative.me for crypto.",
+    "Current Fear & Greed index: CNN for stocks, Alternative.me for crypto.",
     {
-      market: z.enum(["stock", "crypto"]).optional().describe("Defaults to stock."),
+      market: z.enum(["stock", "crypto"]).optional().describe("Default stock."),
     },
     ({ market }) =>
       handleTool(() => market === "crypto" ? fetchCryptoFearGreed() : fetchCnnFearGreed())
@@ -144,18 +174,18 @@ export function createServer(): McpServer {
 
   server.tool(
     "technical_indicator",
-    "Calculate a technical indicator (SMA, EMA, RSI, MACD, BBANDS) for a stock.",
+    "Calculate SMA, EMA, RSI, MACD, or BBANDS from daily prices.",
     {
-      ticker: z.string().describe("Ticker symbol (e.g. AAPL)"),
-      indicator: z.enum(["SMA", "EMA", "RSI", "MACD", "BBANDS"]).describe("Indicator type"),
-      period1: z.string().optional().describe("Start date (YYYY-MM-DD). Defaults to 1 year ago."),
-      period2: z.string().optional().describe("End date (YYYY-MM-DD). Defaults to today."),
-      timeperiod: z.number().optional().describe("Indicator period (e.g. 14 for RSI). Defaults to 14."),
-      fastperiod: z.number().optional().describe("MACD fast period. Defaults to 12."),
-      slowperiod: z.number().optional().describe("MACD slow period. Defaults to 26."),
-      signalperiod: z.number().optional().describe("MACD signal period. Defaults to 9."),
-      nbdev: z.number().optional().describe("BBANDS standard deviations. Defaults to 2."),
-      numResults: z.number().optional().describe("Number of most recent results. Defaults to 100."),
+      ticker: z.string().describe("Ticker, e.g. AAPL."),
+      indicator: z.enum(["SMA", "EMA", "RSI", "MACD", "BBANDS"]).describe("Indicator."),
+      period1: z.string().optional().describe("Start YYYY-MM-DD; default 1 year ago."),
+      period2: z.string().optional().describe("End YYYY-MM-DD; default today."),
+      timeperiod: z.number().optional().describe("SMA/EMA/RSI/BBANDS period; default 14."),
+      fastperiod: z.number().optional().describe("MACD fast; default 12."),
+      slowperiod: z.number().optional().describe("MACD slow; default 26."),
+      signalperiod: z.number().optional().describe("MACD signal; default 9."),
+      nbdev: z.number().optional().describe("BBANDS deviations; default 2."),
+      numResults: z.number().optional().describe("Most recent rows; default 100."),
     },
     ({ ticker, indicator, ...opts }) =>
       handleTool(() => calculateIndicator(ticker, indicator, opts))
