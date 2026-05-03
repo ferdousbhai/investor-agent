@@ -8,6 +8,7 @@ import type { HistoricalRow } from "./yahoo-types.js";
 export const yf = new YahooFinance({
   validation: { logErrors: false, logOptionsErrors: false },
   queue: { concurrency: 2 },
+  suppressNotices: ["yahooSurvey"],
 });
 
 export type QuoteSummaryModule =
