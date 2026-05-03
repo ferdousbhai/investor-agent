@@ -55,15 +55,41 @@ function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
-async function handleTool(fn: () => Promise<unknown>): Promise<ToolResult> {
+const TOOL_XML_TAGS: Record<string, string> = {
+  get_stock_info: "stock_info",
+  get_options: "options",
+  fear_greed_index: "sentiment",
+  technical_indicator: "technical_analysis",
+};
+
+function escapeXmlText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function toolXml(toolName: string, payload: unknown): string {
+  const tagName = TOOL_XML_TAGS[toolName] ?? toolName;
+  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+  return `<${tagName}>${escapeXmlText(text)}</${tagName}>`;
+}
+
+async function handleTool(toolName: string, fn: () => Promise<unknown>): Promise<ToolResult> {
   const { allowed, retryAfterMs } = consumeRateLimit();
   if (!allowed) {
-    return { content: [{ type: "text", text: `Rate limit exceeded (${MAX_CALLS} calls/min). Try again in ${Math.ceil(retryAfterMs / 1000)}s.` }], isError: true };
+    return {
+      content: [{
+        type: "text",
+        text: `Rate limit exceeded (${MAX_CALLS} calls/min). Try again in ${Math.ceil(retryAfterMs / 1000)}s.`,
+      }],
+      isError: true,
+    };
   }
   try {
-    return { content: [{ type: "text", text: JSON.stringify(await fn()) }] };
+    return { content: [{ type: "text", text: toolXml(toolName, await fn()) }] };
   } catch (e) {
-    return { content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
+    return {
+      content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
+      isError: true,
+    };
   }
 }
 
@@ -78,7 +104,7 @@ export function createServer(): McpServer {
       modules: z.array(z.enum(QUOTE_SUMMARY_MODULES)).describe("Yahoo quoteSummary modules to fetch."),
     },
     ({ symbol, modules }) =>
-      handleTool(() => quoteSummary(symbol, [...modules]))
+      handleTool("get_stock_info", () => quoteSummary(symbol, [...modules]))
   );
 
   server.tool(
@@ -92,9 +118,10 @@ export function createServer(): McpServer {
       limit: z.number().optional().describe("Most recent rows; default 100."),
     },
     ({ symbol, period1, period2, interval, limit }) =>
-      handleTool(async () => {
+      handleTool("historical_prices", async () => {
         const start = period1 ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-        const rows = await getHistorical(symbol, { period1: start, period2, interval: interval ?? "1wk" });
+        const end = period2 ?? new Date().toISOString().slice(0, 10);
+        const rows = await getHistorical(symbol, { period1: start, period2: end, interval: interval ?? "1wk" });
         return rows.slice(-(limit ?? 100));
       })
   );
@@ -111,7 +138,7 @@ export function createServer(): McpServer {
       limit: z.number().optional().describe("Contracts per type; default 25."),
     },
     ({ symbol, date, option_type, strike_min, strike_max, limit }) =>
-      handleTool(async () => {
+      handleTool("get_options", async () => {
         const raw = await getOptions(symbol, date ? { date } : undefined) as Record<string, unknown>;
         const optionsArr = raw.options as Array<{ calls?: unknown[]; puts?: unknown[] }> | undefined;
         if (!optionsArr?.length) return raw;
@@ -148,7 +175,7 @@ export function createServer(): McpServer {
       count: z.number().optional().describe("Default 25."),
     },
     ({ category, count }) =>
-      handleTool(() => fetchMarketMovers(category ?? "most-active", count ?? 25))
+      handleTool("market_movers", () => fetchMarketMovers(category ?? "most-active", count ?? 25))
   );
 
   server.tool(
@@ -159,7 +186,7 @@ export function createServer(): McpServer {
       count: z.number().optional().describe("Default 25."),
     },
     ({ date, count }) =>
-      handleTool(() => fetchNasdaqEarningsCalendar(date, count ?? 25))
+      handleTool("earnings_calendar", () => fetchNasdaqEarningsCalendar(date, count ?? 25))
   );
 
   server.tool(
@@ -169,7 +196,7 @@ export function createServer(): McpServer {
       market: z.enum(["stock", "crypto"]).optional().describe("Default stock."),
     },
     ({ market }) =>
-      handleTool(() => market === "crypto" ? fetchCryptoFearGreed() : fetchCnnFearGreed())
+      handleTool("fear_greed_index", () => market === "crypto" ? fetchCryptoFearGreed() : fetchCnnFearGreed())
   );
 
   server.tool(
@@ -188,7 +215,7 @@ export function createServer(): McpServer {
       numResults: z.number().optional().describe("Most recent rows; default 100."),
     },
     ({ ticker, indicator, ...opts }) =>
-      handleTool(() => calculateIndicator(ticker, indicator, opts))
+      handleTool("technical_indicator", () => calculateIndicator(ticker, indicator, opts))
   );
 
   return server;

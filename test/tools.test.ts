@@ -129,6 +129,10 @@ describe("getHistorical", () => {
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(2);
     expect(result[0]).toHaveProperty("close", 149);
+    expect((__mock as any).historical).toHaveBeenCalledWith(
+      "AAPL",
+      expect.not.objectContaining({ period2: undefined })
+    );
   });
 
   it("passes interval option", async () => {
@@ -367,6 +371,10 @@ describe("calculateIndicator", () => {
     expect(Array.isArray(result)).toBe(true);
     const firstNonNull = result.find((v) => v.sma !== null);
     expect(typeof firstNonNull?.sma).toBe("number");
+    expect((__mock as any).historical).toHaveBeenCalledWith(
+      "AAPL",
+      expect.objectContaining({ period2: expect.any(String) })
+    );
   });
 
   it("throws when insufficient data for indicator", async () => {

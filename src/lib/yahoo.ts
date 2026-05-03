@@ -57,10 +57,15 @@ export async function getHistorical(
   opts: { period1: string | Date; period2?: string | Date; interval?: "1d" | "1wk" | "1mo" }
 ): Promise<HistoricalRow[]> {
   const ticker = validateTicker(symbol);
-  const cacheKey = `hist:${ticker}:${String(opts.period1)}:${String(opts.period2 ?? "")}:${opts.interval ?? "1d"}`;
+  const cleanOpts = {
+    period1: opts.period1,
+    ...(opts.period2 !== undefined && { period2: opts.period2 }),
+    ...(opts.interval !== undefined && { interval: opts.interval }),
+  };
+  const cacheKey = `hist:${ticker}:${String(cleanOpts.period1)}:${String(cleanOpts.period2 ?? "")}:${cleanOpts.interval ?? "1d"}`;
   return getOrFetch(
     cacheKey,
-    () => withRetry(() => yf.historical(ticker, opts) as Promise<HistoricalRow[]>),
+    () => withRetry(() => yf.historical(ticker, cleanOpts) as Promise<HistoricalRow[]>),
     CacheTTL.TECHNICALS
   );
 }
@@ -77,4 +82,3 @@ export async function getOptions(
     CacheTTL.QUOTE_SUMMARY
   );
 }
-

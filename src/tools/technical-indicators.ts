@@ -32,7 +32,7 @@ export async function calculateIndicator(
   opts: IndicatorOpts
 ): Promise<IndicatorResult> {
   const period1 = opts.period1 ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-  const period2 = opts.period2;
+  const period2 = opts.period2 ?? new Date().toISOString().slice(0, 10);
   const timeperiod = opts.timeperiod ?? 14;
   const fastperiod = opts.fastperiod ?? 12;
   const slowperiod = opts.slowperiod ?? 26;
