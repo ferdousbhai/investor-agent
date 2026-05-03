@@ -79,7 +79,10 @@ export async function getOptions(
   const cacheKey = `opts:${ticker}:${opts?.date ?? ""}`;
   return getOrFetch(
     cacheKey,
-    () => withRetry(() => yf.options(ticker, opts) as Promise<Record<string, unknown>>),
+    () => withRetry(
+      () => yf.options(ticker, opts) as Promise<Record<string, unknown>>,
+      { maxAttempts: 2, initialDelayMs: 500, attemptTimeoutMs: 12_000 },
+    ),
     CacheTTL.QUOTE_SUMMARY
   );
 }

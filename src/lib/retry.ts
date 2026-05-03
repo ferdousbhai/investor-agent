@@ -5,6 +5,7 @@ export async function withRetry<T>(
     initialDelayMs?: number;
     maxDelayMs?: number;
     multiplier?: number;
+    attemptTimeoutMs?: number;
     shouldRetry?: (error: unknown) => boolean;
   } = {}
 ): Promise<T> {
@@ -13,13 +14,14 @@ export async function withRetry<T>(
     initialDelayMs = 2000,
     maxDelayMs = 30000,
     multiplier = 2,
+    attemptTimeoutMs,
     shouldRetry = isRetryableError,
   } = opts;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await fn();
+      return await withTimeout(fn(), attemptTimeoutMs);
     } catch (error) {
       lastError = error;
       if (attempt === maxAttempts || !shouldRetry(error)) {
@@ -30,6 +32,21 @@ export async function withRetry<T>(
     }
   }
   throw lastError;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<T> {
+  if (!timeoutMs) return promise;
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 function isRetryableError(error: unknown): boolean {

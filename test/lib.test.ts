@@ -159,6 +159,25 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  it("times out a hung attempt and retries", async () => {
+    const fn = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValue("ok");
+
+    const promise = withRetry(fn, {
+      maxAttempts: 2,
+      initialDelayMs: 10,
+      attemptTimeoutMs: 50,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    const result = await promise;
+    expect(result).toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
   it("retries on network error", async () => {
     const fn = vi
       .fn()
@@ -203,4 +222,3 @@ describe("getOrFetch", () => {
     expect(fetcher2).not.toHaveBeenCalled();
   });
 });
-
