@@ -2,6 +2,7 @@
   "name": "investor-agent",
   "version": "3.0.0",
   "description": "Financial research MCP server — Yahoo Finance quotes, historical prices, options, market movers, earnings, fear & greed, and technical indicators (SMA, EMA, RSI, MACD, BBANDS).",
+  "packageManager": "pnpm@10.27.0",
   "type": "module",
   "bin": {
     "investor-agent": "dist/index.js"
@@ -11,13 +12,13 @@
   ],
   "scripts": {
     "build": "tsc && shx chmod +x dist/index.js",
-    "prepare": "npm run build",
+    "prepare": "pnpm run build",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+    "inspect": "pnpm dlx @modelcontextprotocol/inspector node dist/index.js"
   },
   "keywords": [
     "mcp",
