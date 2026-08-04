@@ -19,11 +19,27 @@ export interface IndicatorOpts {
 
 export type IndicatorResult = Array<Record<string, unknown>>;
 
-function formatDate(row: HistoricalRow): string {
+function requirePositiveInteger(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function formatDate(row: HistoricalRow, index: number): string {
   const d = row.date;
-  if (d instanceof Date) return d.toISOString().slice(0, 10);
-  if (typeof d === "string") return d.slice(0, 10);
-  return String(d);
+  if (d instanceof Date && Number.isFinite(d.getTime())) return d.toISOString().slice(0, 10);
+  if (typeof d === "string" && d.trim() !== "" && Number.isFinite(Date.parse(d))) {
+    return d.slice(0, 10);
+  }
+  throw new Error(`Historical row ${index} has an invalid date`);
+}
+
+function closePrice(row: HistoricalRow, index: number): number {
+  if (typeof row.close !== "number" || !Number.isFinite(row.close)) {
+    throw new Error(`Historical row ${index} has an invalid close price`);
+  }
+  return row.close;
 }
 
 export async function calculateIndicator(
@@ -33,12 +49,15 @@ export async function calculateIndicator(
 ): Promise<IndicatorResult> {
   const period1 = opts.period1 ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   const period2 = opts.period2 ?? new Date().toISOString().slice(0, 10);
-  const timeperiod = opts.timeperiod ?? 14;
-  const fastperiod = opts.fastperiod ?? 12;
-  const slowperiod = opts.slowperiod ?? 26;
-  const signalperiod = opts.signalperiod ?? 9;
+  const timeperiod = requirePositiveInteger(opts.timeperiod ?? 14, "timeperiod");
+  const fastperiod = requirePositiveInteger(opts.fastperiod ?? 12, "fastperiod");
+  const slowperiod = requirePositiveInteger(opts.slowperiod ?? 26, "slowperiod");
+  const signalperiod = requirePositiveInteger(opts.signalperiod ?? 9, "signalperiod");
   const nbdev = opts.nbdev ?? 2;
-  const numResults = opts.numResults ?? 100;
+  if (!Number.isFinite(nbdev) || nbdev <= 0) {
+    throw new Error("nbdev must be a positive number");
+  }
+  const numResults = requirePositiveInteger(opts.numResults ?? 100, "numResults");
 
   let cacheKey = `ta:${ticker}:${indicator}:${period1}:${period2 ?? ""}`;
   if (indicator === "MACD") cacheKey += `:${fastperiod}:${slowperiod}:${signalperiod}`;
@@ -52,12 +71,13 @@ export async function calculateIndicator(
       if (!history || history.length === 0) throw new Error(`No historical data found for ${ticker}`);
 
       const dates = history.map(formatDate);
-      const minRequired: Record<string, number> = {
+      const closes = history.map(closePrice);
+      const minRequired: Record<IndicatorType, number> = {
         SMA: timeperiod, EMA: timeperiod * 2, RSI: timeperiod + 1,
         MACD: slowperiod + signalperiod, BBANDS: timeperiod,
       };
 
-      if (history.length < (minRequired[indicator] ?? 0)) {
+      if (history.length < minRequired[indicator]) {
         throw new Error(`Insufficient data for ${indicator}: ${history.length} points, need ${minRequired[indicator]}`);
       }
 
@@ -66,25 +86,25 @@ export async function calculateIndicator(
       if (indicator === "SMA") {
         const sma = new SMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
-          const result = sma.update(Number(history[i].close ?? 0), false);
+          const result = sma.update(closes[i], false);
           indicatorRows.push({ date: dates[i], sma: result !== null ? Number(result) : null });
         }
       } else if (indicator === "EMA") {
         const ema = new EMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
-          const result = ema.update(Number(history[i].close ?? 0), false);
+          const result = ema.update(closes[i], false);
           indicatorRows.push({ date: dates[i], ema: ema.isStable ? Number(result) : null });
         }
       } else if (indicator === "RSI") {
         const rsi = new RSI(timeperiod);
         for (let i = 0; i < history.length; i++) {
-          const result = rsi.update(Number(history[i].close ?? 0), false);
+          const result = rsi.update(closes[i], false);
           indicatorRows.push({ date: dates[i], rsi: result !== null ? Number(result) : null });
         }
       } else if (indicator === "MACD") {
         const macd = new MACD(new EMA(fastperiod), new EMA(slowperiod), new EMA(signalperiod));
         for (let i = 0; i < history.length; i++) {
-          const result = macd.update(Number(history[i].close ?? 0), false);
+          const result = macd.update(closes[i], false);
           indicatorRows.push({
             date: dates[i],
             macd: result ? Number(result.macd) : null,
@@ -95,7 +115,7 @@ export async function calculateIndicator(
       } else if (indicator === "BBANDS") {
         const bb = new BollingerBands(timeperiod, nbdev);
         for (let i = 0; i < history.length; i++) {
-          const result = bb.update(Number(history[i].close ?? 0), false);
+          const result = bb.update(closes[i], false);
           indicatorRows.push({
             date: dates[i],
             upper: result ? Number(result.upper) : null,

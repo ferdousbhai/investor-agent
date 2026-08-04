@@ -1,5 +1,4 @@
 import { getOrFetch } from "../lib/cache.js";
-import { clamp } from "../lib/validation.js";
 import { CacheTTL } from "../lib/cache.js";
 import { withRetry } from "../lib/retry.js";
 import { yf } from "../lib/yahoo.js";
@@ -18,6 +17,9 @@ export async function fetchMarketMovers(
 ): Promise<Array<Record<string, unknown>>> {
   const screenerId = SCREENER_MAP[category];
   if (!screenerId) throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_FETCH) {
+    throw new Error(`Count must be an integer from 1 to ${MAX_FETCH}`);
+  }
 
   const rows = await getOrFetch<Array<Record<string, unknown>>>(
     `movers:${category}`,
@@ -25,7 +27,9 @@ export async function fetchMarketMovers(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await withRetry(() => (yf as any).screener(screenerId, { count: MAX_FETCH })) as Record<string, unknown>;
       const quotes = (result as { quotes?: Array<Record<string, unknown>> }).quotes;
-      if (!quotes || !Array.isArray(quotes)) return [];
+      if (!Array.isArray(quotes)) {
+        throw new Error("Yahoo screener response did not include a quotes array");
+      }
 
       return quotes.map((q) => ({
         Symbol: q.symbol,
@@ -40,5 +44,5 @@ export async function fetchMarketMovers(
     CacheTTL.MARKET_MOVERS
   );
 
-  return rows.slice(0, clamp(count, 1, MAX_FETCH));
+  return rows.slice(0, count);
 }

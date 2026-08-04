@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
   validateTicker,
-  clamp,
 } from "../src/lib/validation.js";
 
 describe("validateTicker", () => {
@@ -26,32 +25,6 @@ describe("validateTicker", () => {
 
   it("throws on whitespace-only string", () => {
     expect(() => validateTicker("   ")).toThrow("Ticker symbol cannot be empty");
-  });
-});
-
-describe("clamp", () => {
-  it("returns value when within range", () => {
-    expect(clamp(5, 1, 10)).toBe(5);
-  });
-
-  it("clamps to min when below range", () => {
-    expect(clamp(-5, 0, 100)).toBe(0);
-  });
-
-  it("clamps to max when above range", () => {
-    expect(clamp(200, 0, 100)).toBe(100);
-  });
-
-  it("returns min when value equals min", () => {
-    expect(clamp(0, 0, 100)).toBe(0);
-  });
-
-  it("returns max when value equals max", () => {
-    expect(clamp(100, 0, 100)).toBe(100);
-  });
-
-  it("handles negative range", () => {
-    expect(clamp(0, -10, -1)).toBe(-1);
   });
 });
 

@@ -294,6 +294,21 @@ describe("fetchMarketMovers", () => {
       fetchMarketMovers("invalid", 10)
     ).rejects.toThrow("Invalid category");
   });
+
+  it("throws when Yahoo omits the quotes array", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).screener.mockResolvedValue({});
+
+    await expect(fetchMarketMovers("gainers", 10)).rejects.toThrow(
+      "did not include a quotes array"
+    );
+  });
+
+  it("rejects counts instead of silently clamping them", async () => {
+    await expect(fetchMarketMovers("gainers", 0)).rejects.toThrow(
+      "Count must be an integer"
+    );
+  });
 });
 
 describe("fetchNasdaqEarningsCalendar", () => {
@@ -330,6 +345,17 @@ describe("fetchNasdaqEarningsCalendar", () => {
     expect(result).toEqual([]);
   });
 
+  it("throws when the API omits rows", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: {} }),
+    });
+
+    await expect(
+      fetchNasdaqEarningsCalendar("2024-03-15", 100)
+    ).rejects.toThrow("did not include a rows array");
+  });
+
   it("respects limit parameter", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -346,6 +372,12 @@ describe("fetchNasdaqEarningsCalendar", () => {
 
     const result = await fetchNasdaqEarningsCalendar("2024-03-15", 3);
     expect(result).toHaveLength(3);
+  });
+
+  it("rejects invalid limits instead of changing slice semantics", async () => {
+    await expect(fetchNasdaqEarningsCalendar("2024-03-15", 0)).rejects.toThrow(
+      "Limit must be a positive integer"
+    );
   });
 });
 
@@ -387,6 +419,32 @@ describe("calculateIndicator", () => {
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
     ).rejects.toThrow("Insufficient data for SMA");
+  });
+
+  it("rejects missing close prices instead of treating them as zero", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    const history = Array.from({ length: 14 }, (_, i) => ({
+      date: new Date(2024, 0, i + 1),
+      close: i === 7 ? undefined : 149 + i,
+    }));
+    (__mock as any).historical.mockResolvedValue(history);
+
+    await expect(
+      calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
+    ).rejects.toThrow("row 7 has an invalid close price");
+  });
+
+  it("rejects missing dates instead of emitting an undefined date", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    const history = Array.from({ length: 14 }, (_, i) => ({
+      date: i === 4 ? undefined : new Date(2024, 0, i + 1),
+      close: 149 + i,
+    }));
+    (__mock as any).historical.mockResolvedValue(history);
+
+    await expect(
+      calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
+    ).rejects.toThrow("row 4 has an invalid date");
   });
 
   it("calculates RSI indicator with raw values", async () => {
@@ -498,5 +556,11 @@ describe("calculateIndicator", () => {
     await expect(
       calculateIndicator("AAPL", "INVALID" as any, { period1: "2023-01-01" })
     ).rejects.toThrow("Unsupported indicator");
+  });
+
+  it("rejects invalid result counts instead of applying negative slice semantics", async () => {
+    await expect(
+      calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", numResults: -1 })
+    ).rejects.toThrow("numResults must be a positive integer");
   });
 });

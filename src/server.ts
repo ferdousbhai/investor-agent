@@ -40,6 +40,7 @@ const QUOTE_SUMMARY_MODULES = [
 const MAX_CALLS = 30;
 const WINDOW_MS = 60_000;
 const callTimestamps: number[] = [];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
 function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
   const now = Date.now();
@@ -55,9 +56,21 @@ function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
-const TOOL_XML_TAGS: Record<string, string> = {
+type ToolName =
+  | "get_stock_info"
+  | "historical_prices"
+  | "get_options"
+  | "market_movers"
+  | "earnings_calendar"
+  | "fear_greed_index"
+  | "technical_indicator";
+
+const TOOL_XML_TAGS: Record<ToolName, string> = {
   get_stock_info: "stock_info",
+  historical_prices: "historical_prices",
   get_options: "options",
+  market_movers: "market_movers",
+  earnings_calendar: "earnings_calendar",
   fear_greed_index: "sentiment",
   technical_indicator: "technical_analysis",
 };
@@ -66,13 +79,13 @@ function escapeXmlText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function toolXml(toolName: string, payload: unknown): string {
-  const tagName = TOOL_XML_TAGS[toolName] ?? toolName;
+function toolXml(toolName: ToolName, payload: unknown): string {
+  const tagName = TOOL_XML_TAGS[toolName];
   const text = typeof payload === "string" ? payload : JSON.stringify(payload);
   return `<${tagName}>${escapeXmlText(text)}</${tagName}>`;
 }
 
-async function handleTool(toolName: string, fn: () => Promise<unknown>): Promise<ToolResult> {
+async function handleTool(toolName: ToolName, fn: () => Promise<unknown>): Promise<ToolResult> {
   const { allowed, retryAfterMs } = consumeRateLimit();
   if (!allowed) {
     return {
@@ -112,10 +125,10 @@ export function createServer(): McpServer {
     "Historical OHLCV prices.",
     {
       symbol: z.string().describe("Ticker, e.g. AAPL."),
-      period1: z.string().optional().describe("Start YYYY-MM-DD; default 1 year ago."),
-      period2: z.string().optional().describe("End YYYY-MM-DD; default today."),
+      period1: z.string().regex(ISO_DATE).optional().describe("Start YYYY-MM-DD; default 1 year ago."),
+      period2: z.string().regex(ISO_DATE).optional().describe("End YYYY-MM-DD; default today."),
       interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Default 1wk."),
-      limit: z.number().optional().describe("Most recent rows; default 100."),
+      limit: z.number().int().min(1).optional().describe("Most recent rows; default 100."),
     },
     ({ symbol, period1, period2, interval, limit }) =>
       handleTool("historical_prices", async () => {
@@ -131,34 +144,82 @@ export function createServer(): McpServer {
     "Options chain. Omit date for expirations; set date for contracts sorted by open interest.",
     {
       symbol: z.string().describe("Ticker, e.g. AAPL."),
-      date: z.string().optional().describe("Expiration YYYY-MM-DD."),
+      date: z.string().regex(ISO_DATE).optional().describe("Expiration YYYY-MM-DD."),
       option_type: z.enum(["calls", "puts"]).optional().describe("Optional calls/puts filter."),
       strike_min: z.number().optional().describe("Minimum strike."),
       strike_max: z.number().optional().describe("Maximum strike."),
-      limit: z.number().optional().describe("Contracts per type; default 25."),
+      limit: z.number().int().min(1).optional().describe("Contracts per type; default 25."),
     },
     ({ symbol, date, option_type, strike_min, strike_max, limit }) =>
       handleTool("get_options", async () => {
+        if (strike_min !== undefined && strike_max !== undefined && strike_min > strike_max) {
+          throw new Error("Minimum strike cannot exceed maximum strike");
+        }
         const raw = await getOptions(symbol, date ? { date } : undefined) as Record<string, unknown>;
-        const optionsArr = raw.options as Array<{ calls?: unknown[]; puts?: unknown[] }> | undefined;
-        if (!optionsArr?.length) return raw;
+        const optionsArr = raw.options;
+        if (optionsArr === undefined) {
+          if (date !== undefined) {
+            throw new Error("Yahoo options response did not include the requested option chain");
+          }
+          return raw;
+        }
+        if (!Array.isArray(optionsArr)) {
+          throw new Error("Yahoo options response did not include a valid options array");
+        }
+        if (optionsArr.length === 0) return raw;
 
         const chain = optionsArr[0];
+        if (chain === null || typeof chain !== "object" || Array.isArray(chain)) {
+          throw new Error("Yahoo options response included an invalid option chain");
+        }
         const maxContracts = limit ?? 25;
 
         const filterContracts = (contracts: Array<Record<string, unknown>>) => {
+          for (const contract of contracts) {
+            if (typeof contract.strike !== "number" || !Number.isFinite(contract.strike)) {
+              throw new Error("Option contract has an invalid strike");
+            }
+          }
           let filtered = contracts;
           if (strike_min != null) filtered = filtered.filter(c => (c.strike as number) >= strike_min);
           if (strike_max != null) filtered = filtered.filter(c => (c.strike as number) <= strike_max);
+          const metric = (contract: Record<string, unknown>, key: "openInterest" | "volume") => {
+            const value = contract[key];
+            if (value === undefined) return undefined;
+            if (typeof value !== "number" || !Number.isFinite(value)) {
+              throw new Error(`Option contract has an invalid ${key}`);
+            }
+            return value;
+          };
+          for (const contract of filtered) {
+            metric(contract, "openInterest");
+            metric(contract, "volume");
+          }
+          const compare = (a: number | undefined, b: number | undefined) => {
+            if (a === undefined) return b === undefined ? 0 : 1;
+            if (b === undefined) return -1;
+            return b - a;
+          };
           filtered.sort((a, b) =>
-            ((b.openInterest as number) || 0) - ((a.openInterest as number) || 0)
-            || ((b.volume as number) || 0) - ((a.volume as number) || 0)
+            compare(metric(a, "openInterest"), metric(b, "openInterest"))
+            || compare(metric(a, "volume"), metric(b, "volume"))
           );
           return filtered.slice(0, maxContracts);
         };
 
-        const calls = option_type !== "puts" ? filterContracts((chain.calls ?? []) as Array<Record<string, unknown>>) : undefined;
-        const puts = option_type !== "calls" ? filterContracts((chain.puts ?? []) as Array<Record<string, unknown>>) : undefined;
+        const contracts = (side: "calls" | "puts") => {
+          const value = chain[side];
+          if (!Array.isArray(value)) {
+            throw new Error(`Yahoo options response did not include a ${side} array`);
+          }
+          if (value.some((contract) => contract === null || typeof contract !== "object" || Array.isArray(contract))) {
+            throw new Error(`Yahoo options response included an invalid ${side} contract`);
+          }
+          return value as Array<Record<string, unknown>>;
+        };
+
+        const calls = option_type !== "puts" ? filterContracts(contracts("calls")) : undefined;
+        const puts = option_type !== "calls" ? filterContracts(contracts("puts")) : undefined;
 
         const filtered: Record<string, unknown> = {};
         if (calls) filtered.calls = calls;
@@ -172,7 +233,7 @@ export function createServer(): McpServer {
     "Today's top gainers, losers, or most-active stocks.",
     {
       category: z.enum(["gainers", "losers", "most-active"]).optional().describe("Default most-active."),
-      count: z.number().optional().describe("Default 25."),
+      count: z.number().int().min(1).max(100).optional().describe("Default 25."),
     },
     ({ category, count }) =>
       handleTool("market_movers", () => fetchMarketMovers(category ?? "most-active", count ?? 25))
@@ -182,8 +243,8 @@ export function createServer(): McpServer {
     "earnings_calendar",
     "NASDAQ earnings calendar.",
     {
-      date: z.string().optional().describe("YYYY-MM-DD; default today."),
-      count: z.number().optional().describe("Default 25."),
+      date: z.string().regex(ISO_DATE).optional().describe("YYYY-MM-DD; default today."),
+      count: z.number().int().min(1).optional().describe("Default 25."),
     },
     ({ date, count }) =>
       handleTool("earnings_calendar", () => fetchNasdaqEarningsCalendar(date, count ?? 25))
@@ -205,14 +266,14 @@ export function createServer(): McpServer {
     {
       ticker: z.string().describe("Ticker, e.g. AAPL."),
       indicator: z.enum(["SMA", "EMA", "RSI", "MACD", "BBANDS"]).describe("Indicator."),
-      period1: z.string().optional().describe("Start YYYY-MM-DD; default 1 year ago."),
-      period2: z.string().optional().describe("End YYYY-MM-DD; default today."),
-      timeperiod: z.number().optional().describe("SMA/EMA/RSI/BBANDS period; default 14."),
-      fastperiod: z.number().optional().describe("MACD fast; default 12."),
-      slowperiod: z.number().optional().describe("MACD slow; default 26."),
-      signalperiod: z.number().optional().describe("MACD signal; default 9."),
-      nbdev: z.number().optional().describe("BBANDS deviations; default 2."),
-      numResults: z.number().optional().describe("Most recent rows; default 100."),
+      period1: z.string().regex(ISO_DATE).optional().describe("Start YYYY-MM-DD; default 1 year ago."),
+      period2: z.string().regex(ISO_DATE).optional().describe("End YYYY-MM-DD; default today."),
+      timeperiod: z.number().int().min(1).optional().describe("SMA/EMA/RSI/BBANDS period; default 14."),
+      fastperiod: z.number().int().min(1).optional().describe("MACD fast; default 12."),
+      slowperiod: z.number().int().min(1).optional().describe("MACD slow; default 26."),
+      signalperiod: z.number().int().min(1).optional().describe("MACD signal; default 9."),
+      nbdev: z.number().positive().optional().describe("BBANDS deviations; default 2."),
+      numResults: z.number().int().min(1).optional().describe("Most recent rows; default 100."),
     },
     ({ ticker, indicator, ...opts }) =>
       handleTool("technical_indicator", () => calculateIndicator(ticker, indicator, opts))
