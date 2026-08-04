@@ -2,8 +2,23 @@ import YahooFinance from "yahoo-finance2";
 import { withRetry } from "./retry.js";
 import { getOrFetch } from "./cache.js";
 import { CacheTTL } from "./cache.js";
-import { validateTicker } from "./validation.js";
+import { describeSchemaError, validateTicker } from "./validation.js";
 import type { HistoricalRow } from "./yahoo-types.js";
+import { z } from "zod";
+
+const historicalRowSchema = z.object({
+  date: z.union([
+    z.date().refine((date) => Number.isFinite(date.getTime())),
+    z.string().min(1).refine((date) => Number.isFinite(Date.parse(date))),
+  ]),
+  open: z.number().finite(),
+  high: z.number().finite(),
+  low: z.number().finite(),
+  close: z.number().finite(),
+  volume: z.number().finite().nonnegative(),
+}).passthrough();
+
+const historicalResponseSchema = z.array(historicalRowSchema);
 
 export const yf = new YahooFinance({
   validation: { logErrors: false, logOptionsErrors: false },
@@ -64,9 +79,16 @@ export async function getHistorical(
     ...(opts.interval !== undefined && { interval: opts.interval }),
   };
   const cacheKey = `hist:${ticker}:${String(cleanOpts.period1)}:${String(cleanOpts.period2 ?? "")}:${cleanOpts.interval ?? "1d"}`;
-  return getOrFetch(
+  return getOrFetch<HistoricalRow[]>(
     cacheKey,
-    () => withRetry(() => yf.historical(ticker, cleanOpts) as Promise<HistoricalRow[]>),
+    async () => {
+      const raw = await withRetry(() => yf.historical(ticker, cleanOpts));
+      const parsed = historicalResponseSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error(`Yahoo historical response was malformed: ${describeSchemaError(parsed.error)}`);
+      }
+      return parsed.data;
+    },
     CacheTTL.TECHNICALS
   );
 }

@@ -1,6 +1,23 @@
 import { fetchJson } from "../lib/fetch.js";
 import { getOrFetch } from "../lib/cache.js";
 import { CacheTTL } from "../lib/cache.js";
+import { describeSchemaError } from "../lib/validation.js";
+import { z } from "zod";
+
+const cnnResponseSchema = z.object({
+  fear_and_greed: z.object({
+    score: z.number().finite(),
+    rating: z.string().min(1),
+  }).passthrough(),
+}).passthrough();
+
+const cryptoResponseSchema = z.object({
+  data: z.array(z.object({
+    value: z.string().regex(/^\d+(?:\.\d+)?$/),
+    value_classification: z.string().min(1),
+    timestamp: z.string().regex(/^\d+$/),
+  }).passthrough()).min(1),
+}).passthrough();
 
 const CNN_HEADERS: Record<string, string> = {
   Accept: "application/json, text/plain, */*",
@@ -13,10 +30,15 @@ export async function fetchCnnFearGreed(): Promise<Record<string, unknown>> {
   return getOrFetch<Record<string, unknown>>(
     "fear_greed:cnn",
     async () => {
-      const raw = await fetchJson<Record<string, unknown>>(
+      const response = await fetchJson<unknown>(
         "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
         CNN_HEADERS
       );
+      const parsed = cnnResponseSchema.safeParse(response);
+      if (!parsed.success) {
+        throw new Error(`CNN fear and greed response was malformed: ${describeSchemaError(parsed.error)}`);
+      }
+      const raw: Record<string, unknown> = parsed.data;
       delete raw["fear_and_greed_historical"];
       for (const value of Object.values(raw)) {
         if (value && typeof value === "object" && "data" in (value as Record<string, unknown>)) {
@@ -37,10 +59,14 @@ export async function fetchCryptoFearGreed(): Promise<{
   return getOrFetch(
     "fear_greed:crypto",
     async () => {
-      const raw = await fetchJson<{ data: Array<Record<string, string>> }>(
+      const response = await fetchJson<unknown>(
         "https://api.alternative.me/fng/"
       );
-      const entry = raw.data[0];
+      const parsed = cryptoResponseSchema.safeParse(response);
+      if (!parsed.success) {
+        throw new Error(`Crypto fear and greed response was malformed: ${describeSchemaError(parsed.error)}`);
+      }
+      const entry = parsed.data.data[0];
       return {
         value: entry.value,
         classification: entry.value_classification,

@@ -149,6 +149,17 @@ describe("getHistorical", () => {
       expect.objectContaining({ interval: "1wk" })
     );
   });
+
+  it("rejects malformed historical rows instead of caching partial OHLCV data", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).historical.mockResolvedValue([
+      { date: new Date("2024-01-01"), close: 149 },
+    ]);
+
+    await expect(
+      getHistorical("AAPL", { period1: "2024-01-01" })
+    ).rejects.toThrow("Yahoo historical response was malformed");
+  });
 });
 
 describe("getOptions", () => {
@@ -226,7 +237,7 @@ describe("fetchCnnFearGreed", () => {
 
   it("strips fear_and_greed_historical key", async () => {
     const mockResponse = {
-      fear_and_greed: { score: 55 },
+      fear_and_greed: { score: 55, rating: "Neutral" },
       fear_and_greed_historical: { data: [1, 2, 3] },
     };
 
@@ -241,7 +252,7 @@ describe("fetchCnnFearGreed", () => {
 
   it("strips data arrays from inner indicators", async () => {
     const mockResponse = {
-      fear_and_greed: { score: 55, data: [1, 2, 3] },
+      fear_and_greed: { score: 55, rating: "Neutral", data: [1, 2, 3] },
     };
 
     mockFetch.mockResolvedValue({
@@ -251,6 +262,17 @@ describe("fetchCnnFearGreed", () => {
 
     const result = await fetchCnnFearGreed();
     expect(result.fear_and_greed).not.toHaveProperty("data");
+  });
+
+  it("rejects an incomplete CNN response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ fear_and_greed: {} }),
+    });
+
+    await expect(fetchCnnFearGreed()).rejects.toThrow(
+      "CNN fear and greed response was malformed"
+    );
   });
 });
 
@@ -271,6 +293,17 @@ describe("fetchCryptoFearGreed", () => {
     expect(result.value).toBe("72");
     expect(result.classification).toBe("Greed");
     expect(result.timestamp).toBe("1700000000");
+  });
+
+  it("rejects an incomplete crypto response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [{}] }),
+    });
+
+    await expect(fetchCryptoFearGreed()).rejects.toThrow(
+      "Crypto fear and greed response was malformed"
+    );
   });
 });
 
@@ -307,6 +340,15 @@ describe("fetchMarketMovers", () => {
   it("rejects counts instead of silently clamping them", async () => {
     await expect(fetchMarketMovers("gainers", 0)).rejects.toThrow(
       "Count must be an integer"
+    );
+  });
+
+  it("rejects malformed quotes instead of returning undefined fields", async () => {
+    const { __mock } = await import("yahoo-finance2");
+    (__mock as any).screener.mockResolvedValue({ quotes: [{}] });
+
+    await expect(fetchMarketMovers("gainers", 10)).rejects.toThrow(
+      "Yahoo screener quote 0 was malformed"
     );
   });
 });
@@ -412,8 +454,8 @@ describe("calculateIndicator", () => {
   it("throws when insufficient data for indicator", async () => {
     const { __mock } = await import("yahoo-finance2");
     (__mock as any).historical.mockResolvedValue([
-      { date: new Date("2024-01-01"), close: 149 },
-      { date: new Date("2024-01-02"), close: 150 },
+      { date: new Date("2024-01-01"), open: 148, high: 150, low: 147, close: 149, volume: 1000 },
+      { date: new Date("2024-01-02"), open: 149, high: 151, low: 148, close: 150, volume: 1100 },
     ]);
 
     await expect(
@@ -425,26 +467,34 @@ describe("calculateIndicator", () => {
     const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 14 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
+      open: 148 + i,
+      high: 150 + i,
+      low: 147 + i,
       close: i === 7 ? undefined : 149 + i,
+      volume: 1000000,
     }));
     (__mock as any).historical.mockResolvedValue(history);
 
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
-    ).rejects.toThrow("row 7 has an invalid close price");
+    ).rejects.toThrow("7.close: Required");
   });
 
   it("rejects missing dates instead of emitting an undefined date", async () => {
     const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 14 }, (_, i) => ({
       date: i === 4 ? undefined : new Date(2024, 0, i + 1),
+      open: 148 + i,
+      high: 150 + i,
+      low: 147 + i,
       close: 149 + i,
+      volume: 1000000,
     }));
     (__mock as any).historical.mockResolvedValue(history);
 
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
-    ).rejects.toThrow("row 4 has an invalid date");
+    ).rejects.toThrow("4.date: Invalid input");
   });
 
   it("calculates RSI indicator with raw values", async () => {
