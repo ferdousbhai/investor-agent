@@ -18,6 +18,9 @@ export async function withRetry<T>(
     shouldRetry = isRetryableError,
   } = opts;
 
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error(`maxAttempts must be a positive integer (received ${String(maxAttempts)})`);
+  }
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -31,11 +34,11 @@ export async function withRetry<T>(
       await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw lastError;
+  throw lastError ?? new Error("withRetry failed without capturing an error");
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<T> {
-  if (!timeoutMs) return promise;
+  if (timeoutMs == null) return promise;
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {

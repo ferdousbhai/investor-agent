@@ -99,6 +99,7 @@ async function handleTool(toolName: ToolName, fn: () => Promise<unknown>): Promi
   try {
     return { content: [{ type: "text", text: toolXml(toolName, await fn()) }] };
   } catch (e) {
+    console.error(`[investor-agent] tool "${toolName}" failed:`, e);
     return {
       content: [{ type: "text", text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
       isError: true,

@@ -1,4 +1,5 @@
 ---
+name: investment-analysis
 description: Triggers on stock/market analysis, investment research, earnings, valuations, sentiment queries.
 ---
 
