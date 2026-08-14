@@ -42,10 +42,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PART 0: fetchJson
-// ═══════════════════════════════════════════════════════════════════════════
-
 const { fetchJson } = await import("../src/lib/fetch.js");
 
 describe("fetchJson", () => {
@@ -84,10 +80,6 @@ describe("fetchJson", () => {
     expect(callHeaders).toHaveProperty("User-Agent");
   });
 });
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PART 0.5: Yahoo Finance wrappers (quoteSummary, getHistorical, getOptions)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const { quoteSummary, getHistorical, getOptions } = await import("../src/lib/yahoo.js");
 
@@ -195,28 +187,10 @@ describe("getOptions", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PART 1: Tool exports are correct
-// ═══════════════════════════════════════════════════════════════════════════
-
 import { fetchCnnFearGreed, fetchCryptoFearGreed } from "../src/tools/fear-greed.js";
 import { fetchMarketMovers } from "../src/tools/market-movers.js";
 import { fetchNasdaqEarningsCalendar } from "../src/tools/earnings.js";
 import { calculateIndicator } from "../src/tools/technical-indicators.js";
-
-describe("Tool exports", () => {
-  it("tool files export data functions", async () => {
-    expect(typeof fetchCnnFearGreed).toBe("function");
-    expect(typeof fetchCryptoFearGreed).toBe("function");
-    expect(typeof fetchMarketMovers).toBe("function");
-    expect(typeof fetchNasdaqEarningsCalendar).toBe("function");
-    expect(typeof calculateIndicator).toBe("function");
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PART 2: Data Function Tests
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe("fetchCnnFearGreed", () => {
   it("returns fear and greed data from CNN API", async () => {

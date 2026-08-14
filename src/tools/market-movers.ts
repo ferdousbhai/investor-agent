@@ -1,15 +1,14 @@
-import { getOrFetch } from "../lib/cache.js";
-import { CacheTTL } from "../lib/cache.js";
+import { CacheTTL, getOrFetch } from "../lib/cache.js";
 import { withRetry } from "../lib/retry.js";
 import { yf } from "../lib/yahoo.js";
 import { describeSchemaError } from "../lib/validation.js";
 import { z } from "zod";
 
-const SCREENER_MAP: Record<string, string> = {
+const SCREENER_MAP = {
   "gainers": "day_gainers",
   "losers": "day_losers",
   "most-active": "most_actives",
-};
+} as const;
 
 const MAX_FETCH = 100;
 
@@ -30,8 +29,10 @@ export async function fetchMarketMovers(
   category: string,
   count: number
 ): Promise<Array<Record<string, unknown>>> {
-  const screenerId = SCREENER_MAP[category];
-  if (!screenerId) throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
+  if (!Object.hasOwn(SCREENER_MAP, category)) {
+    throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
+  }
+  const screenerId = SCREENER_MAP[category as keyof typeof SCREENER_MAP];
   if (!Number.isInteger(count) || count < 1 || count > MAX_FETCH) {
     throw new Error(`Count must be an integer from 1 to ${MAX_FETCH}`);
   }
@@ -39,9 +40,8 @@ export async function fetchMarketMovers(
   const rows = await getOrFetch<Array<Record<string, unknown>>>(
     `movers:${category}`,
     async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await withRetry(() => (yf as any).screener(screenerId, { count: MAX_FETCH })) as Record<string, unknown>;
-      const quotes = (result as { quotes?: Array<Record<string, unknown>> }).quotes;
+      const result = await withRetry(() => yf.screener({ scrIds: screenerId, count: MAX_FETCH }));
+      const quotes = result.quotes;
       if (!Array.isArray(quotes)) {
         throw new Error("Yahoo screener response did not include a quotes array");
       }

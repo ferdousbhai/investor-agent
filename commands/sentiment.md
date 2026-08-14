@@ -1,9 +1,5 @@
 ---
-description: Check market sentiment indicators (Fear & Greed, trends)
-arguments:
-  - name: keywords
-    description: Optional comma-separated keywords to check Google Trends (e.g., "recession,inflation")
-    required: false
+description: Check market sentiment indicators (Fear & Greed, market movers)
 ---
 
 # Market Sentiment Check
@@ -17,8 +13,6 @@ Analyze current market sentiment using multiple indicators.
 2. **Get Crypto Fear & Greed Index** - crypto market sentiment (often leads risk appetite)
 
 3. **Get market movers** - top gainers and losers to see what's moving
-
-4. If keywords provided ("$1"), also **check Google Trends** for those terms
 
 ## Analysis
 

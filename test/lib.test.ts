@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── validation.ts ──────────────────────────────────────────────────────────
 
-import {
-  validateTicker,
-} from "../src/lib/validation.js";
+import { validateTicker } from "../src/lib/validation.js";
 
 describe("validateTicker", () => {
   it("uppercases and trims ticker", () => {

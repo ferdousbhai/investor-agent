@@ -11,7 +11,7 @@ export async function fetchJson<T = Record<string, unknown>>(
 ): Promise<T> {
   return withRetry(async () => {
     const res = await fetch(url, {
-      headers: headers ? { ...BROWSER_HEADERS, ...headers } : BROWSER_HEADERS,
+      headers: { ...BROWSER_HEADERS, ...headers },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText} for ${url}`);
     return res.json() as Promise<T>;

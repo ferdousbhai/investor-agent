@@ -1,10 +1,40 @@
 import YahooFinance from "yahoo-finance2";
 import { withRetry } from "./retry.js";
-import { getOrFetch } from "./cache.js";
-import { CacheTTL } from "./cache.js";
+import { CacheTTL, getOrFetch } from "./cache.js";
 import { describeSchemaError, validateTicker } from "./validation.js";
-import type { HistoricalRow } from "./yahoo-types.js";
 import { z } from "zod";
+
+export const QUOTE_SUMMARY_MODULES = [
+  "assetProfile",
+  "balanceSheetHistory",
+  "balanceSheetHistoryQuarterly",
+  "calendarEvents",
+  "cashflowStatementHistory",
+  "cashflowStatementHistoryQuarterly",
+  "defaultKeyStatistics",
+  "earnings",
+  "earningsHistory",
+  "earningsTrend",
+  "financialData",
+  "fundOwnership",
+  "incomeStatementHistory",
+  "incomeStatementHistoryQuarterly",
+  "indexTrend",
+  "industryTrend",
+  "insiderHolders",
+  "insiderTransactions",
+  "institutionOwnership",
+  "majorHoldersBreakdown",
+  "netSharePurchaseActivity",
+  "price",
+  "recommendationTrend",
+  "secFilings",
+  "summaryDetail",
+  "summaryProfile",
+  "upgradeDowngradeHistory",
+] as const;
+
+export type QuoteSummaryModule = typeof QUOTE_SUMMARY_MODULES[number];
 
 const historicalRowSchema = z.object({
   date: z.union([
@@ -20,40 +50,13 @@ const historicalRowSchema = z.object({
 
 const historicalResponseSchema = z.array(historicalRowSchema);
 
+export type HistoricalRow = z.infer<typeof historicalRowSchema>;
+
 export const yf = new YahooFinance({
   validation: { logErrors: false, logOptionsErrors: false },
   queue: { concurrency: 2 },
   suppressNotices: ["yahooSurvey"],
 });
-
-export type QuoteSummaryModule =
-  | "assetProfile"
-  | "balanceSheetHistory"
-  | "balanceSheetHistoryQuarterly"
-  | "calendarEvents"
-  | "cashflowStatementHistory"
-  | "cashflowStatementHistoryQuarterly"
-  | "defaultKeyStatistics"
-  | "earnings"
-  | "earningsHistory"
-  | "earningsTrend"
-  | "financialData"
-  | "fundOwnership"
-  | "incomeStatementHistory"
-  | "incomeStatementHistoryQuarterly"
-  | "indexTrend"
-  | "industryTrend"
-  | "insiderHolders"
-  | "insiderTransactions"
-  | "institutionOwnership"
-  | "majorHoldersBreakdown"
-  | "netSharePurchaseActivity"
-  | "price"
-  | "recommendationTrend"
-  | "secFilings"
-  | "summaryDetail"
-  | "summaryProfile"
-  | "upgradeDowngradeHistory";
 
 export async function quoteSummary(
   symbol: string,

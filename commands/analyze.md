@@ -1,5 +1,5 @@
 ---
-description: Analyze a stock with fundamentals, news, and price action
+description: Analyze a stock with fundamentals and price action
 arguments:
   - name: ticker
     description: Stock ticker symbol (e.g., AAPL, MSFT, NVDA)
@@ -15,7 +15,7 @@ Perform a comprehensive analysis of **$1** using the investor-agent tools.
 1. **Get comprehensive ticker data** including:
    - Key metrics (P/E, market cap, margins, growth rates)
    - Upcoming events (earnings, dividends)
-   - Recent news and analyst recommendations
+   - Analyst recommendations
 
 2. **Get price history** (1 month) to understand recent price action
 

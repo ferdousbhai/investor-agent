@@ -1,8 +1,6 @@
 import { SMA, EMA, RSI, MACD, BollingerBands } from "trading-signals";
-import { getHistorical } from "../lib/yahoo.js";
-import type { HistoricalRow } from "../lib/yahoo-types.js";
-import { getOrFetch } from "../lib/cache.js";
-import { CacheTTL } from "../lib/cache.js";
+import { getHistorical, type HistoricalRow } from "../lib/yahoo.js";
+import { CacheTTL, getOrFetch } from "../lib/cache.js";
 
 export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BBANDS";
 
@@ -26,20 +24,9 @@ function requirePositiveInteger(value: number, name: string): number {
   return value;
 }
 
-function formatDate(row: HistoricalRow, index: number): string {
-  const d = row.date;
-  if (d instanceof Date && Number.isFinite(d.getTime())) return d.toISOString().slice(0, 10);
-  if (typeof d === "string" && d.trim() !== "" && Number.isFinite(Date.parse(d))) {
-    return d.slice(0, 10);
-  }
-  throw new Error(`Historical row ${index} has an invalid date`);
-}
-
-function closePrice(row: HistoricalRow, index: number): number {
-  if (typeof row.close !== "number" || !Number.isFinite(row.close)) {
-    throw new Error(`Historical row ${index} has an invalid close price`);
-  }
-  return row.close;
+function formatDate(row: HistoricalRow): string {
+  const date = row.date instanceof Date ? row.date.toISOString() : row.date;
+  return date.slice(0, 10);
 }
 
 export async function calculateIndicator(
@@ -59,7 +46,7 @@ export async function calculateIndicator(
   }
   const numResults = requirePositiveInteger(opts.numResults ?? 100, "numResults");
 
-  let cacheKey = `ta:${ticker}:${indicator}:${period1}:${period2 ?? ""}`;
+  let cacheKey = `ta:${ticker}:${indicator}:${period1}:${period2}`;
   if (indicator === "MACD") cacheKey += `:${fastperiod}:${slowperiod}:${signalperiod}`;
   else if (indicator === "BBANDS") cacheKey += `:${timeperiod}:${nbdev}`;
   else cacheKey += `:${timeperiod}`;
@@ -68,10 +55,10 @@ export async function calculateIndicator(
     cacheKey,
     async () => {
       const history = await getHistorical(ticker, { period1, period2, interval: "1d" });
-      if (!history || history.length === 0) throw new Error(`No historical data found for ${ticker}`);
+      if (history.length === 0) throw new Error(`No historical data found for ${ticker}`);
 
       const dates = history.map(formatDate);
-      const closes = history.map(closePrice);
+      const closes = history.map((row) => row.close);
       const minRequired: Record<IndicatorType, number> = {
         SMA: timeperiod, EMA: timeperiod * 2, RSI: timeperiod + 1,
         MACD: slowperiod + signalperiod, BBANDS: timeperiod,

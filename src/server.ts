@@ -1,41 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { quoteSummary, getHistorical, getOptions, type QuoteSummaryModule } from "./lib/yahoo.js";
+import { getHistorical, getOptions, quoteSummary, QUOTE_SUMMARY_MODULES } from "./lib/yahoo.js";
 import { fetchCnnFearGreed, fetchCryptoFearGreed } from "./tools/fear-greed.js";
 import { fetchMarketMovers } from "./tools/market-movers.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
 import { calculateIndicator } from "./tools/technical-indicators.js";
-
-const QUOTE_SUMMARY_MODULES = [
-  "assetProfile",
-  "balanceSheetHistory",
-  "balanceSheetHistoryQuarterly",
-  "calendarEvents",
-  "cashflowStatementHistory",
-  "cashflowStatementHistoryQuarterly",
-  "defaultKeyStatistics",
-  "earnings",
-  "earningsHistory",
-  "earningsTrend",
-  "financialData",
-  "fundOwnership",
-  "incomeStatementHistory",
-  "incomeStatementHistoryQuarterly",
-  "indexTrend",
-  "industryTrend",
-  "insiderHolders",
-  "insiderTransactions",
-  "institutionOwnership",
-  "majorHoldersBreakdown",
-  "netSharePurchaseActivity",
-  "price",
-  "recommendationTrend",
-  "secFilings",
-  "summaryDetail",
-  "summaryProfile",
-  "upgradeDowngradeHistory",
-] as const satisfies readonly QuoteSummaryModule[];
 
 const MAX_CALLS = 30;
 const WINDOW_MS = 60_000;
@@ -56,16 +26,7 @@ function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
-type ToolName =
-  | "get_stock_info"
-  | "historical_prices"
-  | "get_options"
-  | "market_movers"
-  | "earnings_calendar"
-  | "fear_greed_index"
-  | "technical_indicator";
-
-const TOOL_XML_TAGS: Record<ToolName, string> = {
+const TOOL_XML_TAGS = {
   get_stock_info: "stock_info",
   historical_prices: "historical_prices",
   get_options: "options",
@@ -73,7 +34,9 @@ const TOOL_XML_TAGS: Record<ToolName, string> = {
   earnings_calendar: "earnings_calendar",
   fear_greed_index: "sentiment",
   technical_indicator: "technical_analysis",
-};
+} as const;
+
+type ToolName = keyof typeof TOOL_XML_TAGS;
 
 function escapeXmlText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -118,7 +81,7 @@ export function createServer(): McpServer {
       modules: z.array(z.enum(QUOTE_SUMMARY_MODULES)).describe("Yahoo quoteSummary modules to fetch."),
     },
     ({ symbol, modules }) =>
-      handleTool("get_stock_info", () => quoteSummary(symbol, [...modules]))
+      handleTool("get_stock_info", () => quoteSummary(symbol, modules))
   );
 
   server.tool(
@@ -156,7 +119,7 @@ export function createServer(): McpServer {
         if (strike_min !== undefined && strike_max !== undefined && strike_min > strike_max) {
           throw new Error("Minimum strike cannot exceed maximum strike");
         }
-        const raw = await getOptions(symbol, date ? { date } : undefined) as Record<string, unknown>;
+        const raw = await getOptions(symbol, date ? { date } : undefined);
         const optionsArr = raw.options;
         if (optionsArr === undefined) {
           if (date !== undefined) {

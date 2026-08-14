@@ -21,12 +21,10 @@ export async function withRetry<T>(
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
     throw new Error(`maxAttempts must be a positive integer (received ${String(maxAttempts)})`);
   }
-  let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await withTimeout(fn(), attemptTimeoutMs);
     } catch (error) {
-      lastError = error;
       if (attempt === maxAttempts || !shouldRetry(error)) {
         throw error;
       }
@@ -34,7 +32,7 @@ export async function withRetry<T>(
       await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw lastError ?? new Error("withRetry failed without capturing an error");
+  throw new Error("withRetry exhausted attempts unexpectedly");
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<T> {

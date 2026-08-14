@@ -1,6 +1,5 @@
-import { getOrFetch } from "../lib/cache.js";
+import { CacheTTL, getOrFetch } from "../lib/cache.js";
 import { fetchJson } from "../lib/fetch.js";
-import { CacheTTL } from "../lib/cache.js";
 
 const NASDAQ_HEADERS = { Referer: "https://www.nasdaq.com/" };
 
