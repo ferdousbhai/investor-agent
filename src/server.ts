@@ -2,7 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { getHistorical, getOptions, quoteSummary, QUOTE_SUMMARY_MODULES } from "./lib/yahoo.js";
-import { fetchCnnFearGreed, fetchCryptoFearGreed } from "./tools/fear-greed.js";
+import {
+  fetchCnnFearGreed,
+  fetchCryptoFearGreed,
+  type CnnFearGreed,
+  type CryptoFearGreed,
+} from "./tools/fear-greed.js";
 import { fetchMarketMovers } from "./tools/market-movers.js";
 import { fetchNasdaqEarningsCalendar } from "./tools/earnings.js";
 import { calculateIndicator } from "./tools/technical-indicators.js";
@@ -12,7 +17,12 @@ const WINDOW_MS = 60_000;
 const callTimestamps: number[] = [];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
-function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
+interface RateLimitDecision {
+  allowed: boolean;
+  retryAfterMs: number;
+}
+
+function consumeRateLimit(): RateLimitDecision {
   const now = Date.now();
   while (callTimestamps.length > 0 && now - callTimestamps[0] >= WINDOW_MS) {
     callTimestamps.shift();
@@ -25,6 +35,21 @@ function consumeRateLimit(): { allowed: boolean; retryAfterMs: number } {
 }
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+/**
+ * Yahoo's option contracts carry dozens of fields that are forwarded to the caller untouched,
+ * so they are decoded as opaque JSON objects and only the fields this server reads are parsed.
+ */
+const jsonObjectSchema = z.object({}).passthrough();
+const strikeSchema = z.number().finite();
+const contractMetricSchema = z.number().finite().optional();
+
+type OptionContract = z.infer<typeof jsonObjectSchema>;
+
+interface FilteredChain {
+  calls?: OptionContract[];
+  puts?: OptionContract[];
+}
 
 const TOOL_XML_TAGS = {
   get_stock_info: "stock_info",
@@ -42,13 +67,15 @@ function escapeXmlText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function toolXml(toolName: ToolName, payload: unknown): string {
+function toolXml<TPayload>(toolName: ToolName, payload: TPayload): string {
   const tagName = TOOL_XML_TAGS[toolName];
-  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-  return `<${tagName}>${escapeXmlText(text)}</${tagName}>`;
+  return `<${tagName}>${escapeXmlText(JSON.stringify(payload))}</${tagName}>`;
 }
 
-async function handleTool(toolName: ToolName, fn: () => Promise<unknown>): Promise<ToolResult> {
+async function handleTool<TPayload>(
+  toolName: ToolName,
+  fn: () => Promise<TPayload>
+): Promise<ToolResult> {
   const { allowed, retryAfterMs } = consumeRateLimit();
   if (!allowed) {
     return {
@@ -132,60 +159,66 @@ export function createServer(): McpServer {
         }
         if (optionsArr.length === 0) return raw;
 
-        const chain = optionsArr[0];
-        if (chain === null || typeof chain !== "object" || Array.isArray(chain)) {
+        const parsedChain = jsonObjectSchema.safeParse(optionsArr[0]);
+        if (!parsedChain.success) {
           throw new Error("Yahoo options response included an invalid option chain");
         }
+        const chain = parsedChain.data;
         const maxContracts = limit ?? 25;
 
-        const filterContracts = (contracts: Array<Record<string, unknown>>) => {
-          for (const contract of contracts) {
-            if (typeof contract.strike !== "number" || !Number.isFinite(contract.strike)) {
+        const filterContracts = (contracts: OptionContract[]) => {
+          const priced = contracts.map((contract) => {
+            const strike = strikeSchema.safeParse(contract.strike);
+            if (!strike.success) {
               throw new Error("Option contract has an invalid strike");
             }
-          }
-          let filtered = contracts;
-          if (strike_min != null) filtered = filtered.filter(c => (c.strike as number) >= strike_min);
-          if (strike_max != null) filtered = filtered.filter(c => (c.strike as number) <= strike_max);
-          const metric = (contract: Record<string, unknown>, key: "openInterest" | "volume") => {
-            const value = contract[key];
-            if (value === undefined) return undefined;
-            if (typeof value !== "number" || !Number.isFinite(value)) {
+            return { contract, strike: strike.data };
+          });
+
+          let filtered = priced;
+          if (strike_min != null) filtered = filtered.filter(c => c.strike >= strike_min);
+          if (strike_max != null) filtered = filtered.filter(c => c.strike <= strike_max);
+          const metric = (contract: OptionContract, key: "openInterest" | "volume") => {
+            const value = contractMetricSchema.safeParse(contract[key]);
+            if (!value.success) {
               throw new Error(`Option contract has an invalid ${key}`);
             }
-            return value;
+            return value.data;
           };
-          for (const contract of filtered) {
-            metric(contract, "openInterest");
-            metric(contract, "volume");
-          }
+          const ranked = filtered.map(({ contract }) => ({
+            contract,
+            openInterest: metric(contract, "openInterest"),
+            volume: metric(contract, "volume"),
+          }));
           const compare = (a: number | undefined, b: number | undefined) => {
             if (a === undefined) return b === undefined ? 0 : 1;
             if (b === undefined) return -1;
             return b - a;
           };
-          filtered.sort((a, b) =>
-            compare(metric(a, "openInterest"), metric(b, "openInterest"))
-            || compare(metric(a, "volume"), metric(b, "volume"))
+          ranked.sort((a, b) =>
+            compare(a.openInterest, b.openInterest) || compare(a.volume, b.volume)
           );
-          return filtered.slice(0, maxContracts);
+          return ranked.slice(0, maxContracts).map(({ contract }) => contract);
         };
 
-        const contracts = (side: "calls" | "puts") => {
+        const contracts = (side: "calls" | "puts"): OptionContract[] => {
           const value = chain[side];
           if (!Array.isArray(value)) {
             throw new Error(`Yahoo options response did not include a ${side} array`);
           }
-          if (value.some((contract) => contract === null || typeof contract !== "object" || Array.isArray(contract))) {
-            throw new Error(`Yahoo options response included an invalid ${side} contract`);
-          }
-          return value as Array<Record<string, unknown>>;
+          return value.map((contract) => {
+            const parsed = jsonObjectSchema.safeParse(contract);
+            if (!parsed.success) {
+              throw new Error(`Yahoo options response included an invalid ${side} contract`);
+            }
+            return parsed.data;
+          });
         };
 
         const calls = option_type !== "puts" ? filterContracts(contracts("calls")) : undefined;
         const puts = option_type !== "calls" ? filterContracts(contracts("puts")) : undefined;
 
-        const filtered: Record<string, unknown> = {};
+        const filtered: FilteredChain = {};
         if (calls) filtered.calls = calls;
         if (puts) filtered.puts = puts;
         return { ...raw, options: [filtered] };
@@ -221,7 +254,10 @@ export function createServer(): McpServer {
       market: z.enum(["stock", "crypto"]).optional().describe("Default stock."),
     },
     ({ market }) =>
-      handleTool("fear_greed_index", () => market === "crypto" ? fetchCryptoFearGreed() : fetchCnnFearGreed())
+      handleTool<CnnFearGreed | CryptoFearGreed>(
+        "fear_greed_index",
+        () => market === "crypto" ? fetchCryptoFearGreed() : fetchCnnFearGreed()
+      )
   );
 
   server.tool(

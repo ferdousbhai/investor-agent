@@ -1,6 +1,6 @@
 import { CacheTTL, getOrFetch } from "../lib/cache.js";
 import { withRetry } from "../lib/retry.js";
-import { yf } from "../lib/yahoo.js";
+import { yahooClient } from "../lib/yahoo.js";
 import { describeSchemaError } from "../lib/validation.js";
 import { z } from "zod";
 
@@ -9,6 +9,22 @@ const SCREENER_MAP = {
   "losers": "day_losers",
   "most-active": "most_actives",
 } as const;
+
+type MoverCategory = keyof typeof SCREENER_MAP;
+
+function isMoverCategory(value: string): value is MoverCategory {
+  return Object.hasOwn(SCREENER_MAP, value);
+}
+
+export interface MarketMover {
+  Symbol: string;
+  Name: string | undefined;
+  Price: number;
+  Change: number;
+  "Change %": number;
+  Volume: number;
+  "Market Cap": number;
+}
 
 const MAX_FETCH = 100;
 
@@ -28,19 +44,19 @@ const quoteSchema = z.object({
 export async function fetchMarketMovers(
   category: string,
   count: number
-): Promise<Array<Record<string, unknown>>> {
-  if (!Object.hasOwn(SCREENER_MAP, category)) {
+): Promise<MarketMover[]> {
+  if (!isMoverCategory(category)) {
     throw new Error(`Invalid category '${category}'. Valid: gainers, losers, most-active`);
   }
-  const screenerId = SCREENER_MAP[category as keyof typeof SCREENER_MAP];
+  const screenerId = SCREENER_MAP[category];
   if (!Number.isInteger(count) || count < 1 || count > MAX_FETCH) {
     throw new Error(`Count must be an integer from 1 to ${MAX_FETCH}`);
   }
 
-  const rows = await getOrFetch<Array<Record<string, unknown>>>(
+  const rows = await getOrFetch<MarketMover[]>(
     `movers:${category}`,
     async () => {
-      const result = await withRetry(() => yf.screener({ scrIds: screenerId, count: MAX_FETCH }));
+      const result = await withRetry(() => yahooClient().screener({ scrIds: screenerId, count: MAX_FETCH }));
       const quotes = result.quotes;
       if (!Array.isArray(quotes)) {
         throw new Error("Yahoo screener response did not include a quotes array");

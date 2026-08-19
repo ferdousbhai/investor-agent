@@ -1,3 +1,21 @@
+/**
+ * A failed attempt. A throw can carry anything, so the shape is decoded once at
+ * the `catch` boundary and every retry decision reads these named fields.
+ */
+export type AttemptFailure = {
+  /** Lowercased rendering of the thrown value, for message matching. */
+  readonly description: string;
+  /** Set only when the thrown value was an HTTP `Response`. */
+  readonly response: Response | null;
+};
+
+function toAttemptFailure(cause: unknown): AttemptFailure {
+  return {
+    description: String(cause).toLowerCase(),
+    response: cause instanceof Response ? cause : null,
+  };
+}
+
 export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: {
@@ -6,7 +24,7 @@ export async function withRetry<T>(
     maxDelayMs?: number;
     multiplier?: number;
     attemptTimeoutMs?: number;
-    shouldRetry?: (error: unknown) => boolean;
+    shouldRetry?: (failure: AttemptFailure) => boolean;
   } = {}
 ): Promise<T> {
   const {
@@ -15,7 +33,7 @@ export async function withRetry<T>(
     maxDelayMs = 30000,
     multiplier = 2,
     attemptTimeoutMs,
-    shouldRetry = isRetryableError,
+    shouldRetry = isRetryableFailure,
   } = opts;
 
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
@@ -25,7 +43,7 @@ export async function withRetry<T>(
     try {
       return await withTimeout(fn(), attemptTimeoutMs);
     } catch (error) {
-      if (attempt === maxAttempts || !shouldRetry(error)) {
+      if (attempt === maxAttempts || !shouldRetry(toAttemptFailure(error))) {
         throw error;
       }
       const delay = Math.min(initialDelayMs * multiplier ** (attempt - 1), maxDelayMs);
@@ -50,9 +68,21 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<
   }
 }
 
-function isRetryableError(error: unknown): boolean {
-  const msg = String(error).toLowerCase();
-  if (["rate limit", "too many requests", "temporarily blocked", "timeout", "connection", "network", "429", "502", "503", "504"].some((t) => msg.includes(t))) return true;
-  if (error instanceof Response) return error.status >= 500 || error.status === 429;
-  return false;
+const RETRYABLE_MARKERS = [
+  "rate limit",
+  "too many requests",
+  "temporarily blocked",
+  "timeout",
+  "connection",
+  "network",
+  "429",
+  "502",
+  "503",
+  "504",
+] as const;
+
+function isRetryableFailure(failure: AttemptFailure): boolean {
+  if (RETRYABLE_MARKERS.some((marker) => failure.description.includes(marker))) return true;
+  const { response } = failure;
+  return response !== null && (response.status >= 500 || response.status === 429);
 }

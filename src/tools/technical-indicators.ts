@@ -15,7 +15,14 @@ export interface IndicatorOpts {
   numResults?: number;
 }
 
-export type IndicatorResult = Array<Record<string, unknown>>;
+export type IndicatorRow =
+  | { date: string; sma: number | null }
+  | { date: string; ema: number | null }
+  | { date: string; rsi: number | null }
+  | { date: string; macd: number | null; signal: number | null; histogram: number | null }
+  | { date: string; upper: number | null; middle: number | null; lower: number | null };
+
+export type IndicatorResult = IndicatorRow[];
 
 function requirePositiveInteger(value: number, name: string): number {
   if (!Number.isInteger(value) || value < 1) {
@@ -59,16 +66,16 @@ export async function calculateIndicator(
 
       const dates = history.map(formatDate);
       const closes = history.map((row) => row.close);
-      const minRequired: Record<IndicatorType, number> = {
+      const minRequired = {
         SMA: timeperiod, EMA: timeperiod * 2, RSI: timeperiod + 1,
         MACD: slowperiod + signalperiod, BBANDS: timeperiod,
-      };
+      } satisfies Record<IndicatorType, number>;
 
       if (history.length < minRequired[indicator]) {
         throw new Error(`Insufficient data for ${indicator}: ${history.length} points, need ${minRequired[indicator]}`);
       }
 
-      const indicatorRows: Array<Record<string, unknown>> = [];
+      const indicatorRows: IndicatorRow[] = [];
 
       if (indicator === "SMA") {
         const sma = new SMA(timeperiod);

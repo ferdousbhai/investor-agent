@@ -24,12 +24,20 @@ export async function getOrFetch<T>(
   const now = Date.now();
   const cached = store.get(key);
   if (cached) {
-    if (cached.expires > now) return cached.value as T;
+    if (cached.expires > now) {
+      // SAFETY: a key is only ever written below by the getOrFetch call that owns it,
+      // so the stored value is whatever that call's fetcher produced for this same key.
+      return cached.value as T;
+    }
     store.delete(key);
   }
 
   const existing = inflight.get(key);
-  if (existing) return existing as Promise<T>;
+  if (existing) {
+    // SAFETY: same key ownership invariant — the in-flight promise was created by a
+    // getOrFetch call using this key, so it resolves to that key's value type.
+    return existing as Promise<T>;
+  }
 
   const promise = fetcher()
     .then((value) => {

@@ -1,45 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
+import { resetYahooClient, setYahooClient } from "../src/lib/yahoo.js";
 
-// ─── Mock yahoo-finance2 ────────────────────────────────────────────────────
+// ─── Stand-in Yahoo client ──────────────────────────────────────────────────
 
-vi.mock("yahoo-finance2", () => {
-  const instance = {
-    quoteSummary: vi.fn().mockResolvedValue({}),
-    historical: vi.fn().mockResolvedValue([]),
-    options: vi.fn().mockResolvedValue({}),
-    screener: vi.fn().mockResolvedValue({ quotes: [] }),
-  };
-  return {
-    default: class YahooFinance {
-      quoteSummary = instance.quoteSummary;
-      historical = instance.historical;
-      options = instance.options;
-      screener = instance.screener;
-    },
-    __mock: instance,
-  };
-});
+const yahoo = {
+  quoteSummary: vi.fn(),
+  historical: vi.fn(),
+  options: vi.fn(),
+  screener: vi.fn(),
+};
 
 // ─── Mock fetch globally ────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
   clearCache();
 
-  // Reset yahoo-finance2 mocks to prevent call history leaking between tests
-  const { __mock } = await import("yahoo-finance2");
-  (__mock as any).quoteSummary.mockReset();
-  (__mock as any).historical.mockReset();
-  (__mock as any).options.mockReset();
-  (__mock as any).screener.mockReset();
+  // Reset the stand-in to prevent call history leaking between tests
+  yahoo.quoteSummary.mockReset();
+  yahoo.historical.mockReset();
+  yahoo.options.mockReset();
+  yahoo.screener.mockReset();
+  setYahooClient(yahoo);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetYahooClient();
 });
 
 const { fetchJson } = await import("../src/lib/fetch.js");
@@ -85,8 +76,7 @@ const { quoteSummary, getHistorical, getOptions } = await import("../src/lib/yah
 
 describe("quoteSummary", () => {
   it("returns quote summary data", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).quoteSummary.mockResolvedValue({
+    yahoo.quoteSummary.mockResolvedValue({
       price: { regularMarketPrice: 150 },
     });
 
@@ -96,8 +86,7 @@ describe("quoteSummary", () => {
   });
 
   it("handles multiple modules", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).quoteSummary.mockResolvedValue({
+    yahoo.quoteSummary.mockResolvedValue({
       price: { regularMarketPrice: 150 },
       summaryDetail: { marketCap: 2500000000000 },
     });
@@ -110,41 +99,38 @@ describe("quoteSummary", () => {
 
 describe("getHistorical", () => {
   it("returns historical price data", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const mockData = [
       { date: new Date("2024-01-01"), open: 148, high: 150, low: 147, close: 149, volume: 1000000 },
       { date: new Date("2024-01-02"), open: 149, high: 151, low: 148, close: 150, volume: 1100000 },
     ];
-    (__mock as any).historical.mockResolvedValue(mockData);
+    yahoo.historical.mockResolvedValue(mockData);
 
     const result = await getHistorical("AAPL", { period1: "2024-01-01" });
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(2);
     expect(result[0]).toHaveProperty("close", 149);
-    expect((__mock as any).historical).toHaveBeenCalledWith(
+    expect(yahoo.historical).toHaveBeenCalledWith(
       "AAPL",
       expect.not.objectContaining({ period2: undefined })
     );
   });
 
   it("passes interval option", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).historical.mockResolvedValue([]);
+    yahoo.historical.mockResolvedValue([]);
 
     await getHistorical("AAPL", {
       period1: "2024-01-01",
       period2: "2024-06-01",
       interval: "1wk",
     });
-    expect((__mock as any).historical).toHaveBeenCalledWith(
+    expect(yahoo.historical).toHaveBeenCalledWith(
       "AAPL",
       expect.objectContaining({ interval: "1wk" })
     );
   });
 
   it("rejects malformed historical rows instead of caching partial OHLCV data", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).historical.mockResolvedValue([
+    yahoo.historical.mockResolvedValue([
       { date: new Date("2024-01-01"), close: 149 },
     ]);
 
@@ -156,8 +142,7 @@ describe("getHistorical", () => {
 
 describe("getOptions", () => {
   it("returns options chain data", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).options.mockResolvedValue({
+    yahoo.options.mockResolvedValue({
       expirationDates: ["2024-03-15", "2024-04-19"],
       options: [{ calls: [], puts: [] }],
     });
@@ -168,22 +153,20 @@ describe("getOptions", () => {
   });
 
   it("passes date option when provided", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).options.mockResolvedValue({
+    yahoo.options.mockResolvedValue({
       expirationDates: [],
       options: [{ calls: [{ strike: 150 }], puts: [{ strike: 140 }] }],
     });
 
     await getOptions("AAPL", { date: "2024-03-15" });
-    expect((__mock as any).options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
+    expect(yahoo.options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
   });
 
   it("works without date option", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).options.mockResolvedValue({ expirationDates: [] });
+    yahoo.options.mockResolvedValue({ expirationDates: [] });
 
     await getOptions("AAPL");
-    expect((__mock as any).options).toHaveBeenCalledWith("AAPL", undefined);
+    expect(yahoo.options).toHaveBeenCalledWith("AAPL", undefined);
   });
 });
 
@@ -283,8 +266,7 @@ describe("fetchCryptoFearGreed", () => {
 
 describe("fetchMarketMovers", () => {
   it("returns mapped market movers from screener API", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).screener.mockResolvedValue({
+    yahoo.screener.mockResolvedValue({
       quotes: [
         { symbol: "NVDA", shortName: "NVIDIA", regularMarketPrice: 900, regularMarketChange: 50, regularMarketChangePercent: 5.8, regularMarketVolume: 80000000, marketCap: 2200000000000 },
       ],
@@ -303,8 +285,7 @@ describe("fetchMarketMovers", () => {
   });
 
   it("throws when Yahoo omits the quotes array", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).screener.mockResolvedValue({});
+    yahoo.screener.mockResolvedValue({});
 
     await expect(fetchMarketMovers("gainers", 10)).rejects.toThrow(
       "did not include a quotes array"
@@ -318,8 +299,7 @@ describe("fetchMarketMovers", () => {
   });
 
   it("rejects malformed quotes instead of returning undefined fields", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).screener.mockResolvedValue({ quotes: [{}] });
+    yahoo.screener.mockResolvedValue({ quotes: [{}] });
 
     await expect(fetchMarketMovers("gainers", 10)).rejects.toThrow(
       "Yahoo screener quote 0 was malformed"
@@ -399,7 +379,6 @@ describe("fetchNasdaqEarningsCalendar", () => {
 
 describe("calculateIndicator", () => {
   it("calculates SMA and returns raw numeric values", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       open: 148 + i,
@@ -408,7 +387,7 @@ describe("calculateIndicator", () => {
       close: 149 + i,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     const result = await calculateIndicator(
       "AAPL",
@@ -418,16 +397,15 @@ describe("calculateIndicator", () => {
 
     expect(Array.isArray(result)).toBe(true);
     const firstNonNull = result.find((v) => v.sma !== null);
-    expect(typeof firstNonNull?.sma).toBe("number");
-    expect((__mock as any).historical).toHaveBeenCalledWith(
+    expect(firstNonNull?.sma).toEqual(expect.any(Number));
+    expect(yahoo.historical).toHaveBeenCalledWith(
       "AAPL",
       expect.objectContaining({ period2: expect.any(String) })
     );
   });
 
   it("throws when insufficient data for indicator", async () => {
-    const { __mock } = await import("yahoo-finance2");
-    (__mock as any).historical.mockResolvedValue([
+    yahoo.historical.mockResolvedValue([
       { date: new Date("2024-01-01"), open: 148, high: 150, low: 147, close: 149, volume: 1000 },
       { date: new Date("2024-01-02"), open: 149, high: 151, low: 148, close: 150, volume: 1100 },
     ]);
@@ -438,7 +416,6 @@ describe("calculateIndicator", () => {
   });
 
   it("rejects missing close prices instead of treating them as zero", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 14 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       open: 148 + i,
@@ -447,7 +424,7 @@ describe("calculateIndicator", () => {
       close: i === 7 ? undefined : 149 + i,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
@@ -455,7 +432,6 @@ describe("calculateIndicator", () => {
   });
 
   it("rejects missing dates instead of emitting an undefined date", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 14 }, (_, i) => ({
       date: i === 4 ? undefined : new Date(2024, 0, i + 1),
       open: 148 + i,
@@ -464,7 +440,7 @@ describe("calculateIndicator", () => {
       close: 149 + i,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
@@ -472,7 +448,6 @@ describe("calculateIndicator", () => {
   });
 
   it("calculates RSI indicator with raw values", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       close: 149 + Math.sin(i) * 5,
@@ -481,7 +456,7 @@ describe("calculateIndicator", () => {
       low: 145,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     const result = await calculateIndicator(
       "AAPL",
@@ -493,7 +468,6 @@ describe("calculateIndicator", () => {
   });
 
   it("calculates MACD indicator", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 50 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       close: 149 + i * 0.5,
@@ -502,7 +476,7 @@ describe("calculateIndicator", () => {
       low: 145,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     const result = await calculateIndicator(
       "AAPL",
@@ -518,7 +492,6 @@ describe("calculateIndicator", () => {
   });
 
   it("calculates EMA indicator", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       close: 149 + i * 0.3,
@@ -527,7 +500,7 @@ describe("calculateIndicator", () => {
       low: 145,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     const result = await calculateIndicator(
       "AAPL",
@@ -537,11 +510,10 @@ describe("calculateIndicator", () => {
 
     expect(result.some((v) => v.ema !== null)).toBe(true);
     const firstNonNull = result.find((v) => v.ema !== null);
-    expect(typeof firstNonNull?.ema).toBe("number");
+    expect(firstNonNull?.ema).toEqual(expect.any(Number));
   });
 
   it("calculates BBANDS indicator", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       close: 149 + i * 0.5,
@@ -550,7 +522,7 @@ describe("calculateIndicator", () => {
       low: 145,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
     const result = await calculateIndicator(
       "AAPL",
@@ -566,7 +538,6 @@ describe("calculateIndicator", () => {
   });
 
   it("throws on unsupported indicator type", async () => {
-    const { __mock } = await import("yahoo-finance2");
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
       close: 149 + i,
@@ -575,8 +546,10 @@ describe("calculateIndicator", () => {
       low: 145,
       volume: 1000000,
     }));
-    (__mock as any).historical.mockResolvedValue(history);
+    yahoo.historical.mockResolvedValue(history);
 
+    // SAFETY: deliberately out-of-contract input — this test exists to prove the runtime
+    // guard rejects indicators the IndicatorType union cannot express.
     await expect(
       calculateIndicator("AAPL", "INVALID" as any, { period1: "2023-01-01" })
     ).rejects.toThrow("Unsupported indicator");

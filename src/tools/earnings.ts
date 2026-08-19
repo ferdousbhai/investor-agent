@@ -1,18 +1,32 @@
+import { z } from "zod";
 import { CacheTTL, getOrFetch } from "../lib/cache.js";
 import { fetchJson } from "../lib/fetch.js";
 
 const NASDAQ_HEADERS = { Referer: "https://www.nasdaq.com/" };
 
+const symbolSchema = z.string().refine((symbol) => symbol.trim() !== "");
+
+/** NASDAQ omits fields it has no value for, so everything but the symbol may be absent. */
+export interface EarningsCalendarRow {
+  date: string;
+  symbol: string;
+  name: string | undefined;
+  time: string | undefined;
+  quarter: string | undefined;
+  epsForecast: string | undefined;
+  lastYearEPS: string | undefined;
+}
+
 export async function fetchNasdaqEarningsCalendar(
   date: string | undefined,
   limit: number
-): Promise<Array<Record<string, unknown>>> {
+): Promise<EarningsCalendarRow[]> {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new Error("Limit must be a positive integer");
   }
   const dateStr = date ?? new Date().toISOString().slice(0, 10);
 
-  return getOrFetch<Array<Record<string, unknown>>>(
+  return getOrFetch<EarningsCalendarRow[]>(
     `earnings_cal:${dateStr}`,
     async () => {
       const raw = await fetchJson<{
@@ -26,12 +40,13 @@ export async function fetchNasdaqEarningsCalendar(
       }
 
       return rawRows.map((row, index) => {
-        if (typeof row.symbol !== "string" || row.symbol.trim() === "") {
+        const symbol = symbolSchema.safeParse(row.symbol);
+        if (!symbol.success) {
           throw new Error(`NASDAQ earnings row ${index} is missing a symbol`);
         }
         return {
           date: dateStr,
-          symbol: row.symbol,
+          symbol: symbol.data,
           name: row.name,
           time: row.time,
           quarter: row.fiscalQuarterEnding,

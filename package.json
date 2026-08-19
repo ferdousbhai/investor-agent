@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "inspect": "pnpm dlx @modelcontextprotocol/inspector node dist/index.js"
+    "inspect": "pnpm dlx @modelcontextprotocol/inspector node dist/index.js",
+    "lint": "oxlint"
   },
   "keywords": [
     "mcp",
@@ -46,7 +47,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",
+    "@oxlint/plugins": "1.78.0",
     "@types/node": "^22.0.0",
+    "oxlint": "1.78.0",
     "shx": "^0.3.4",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",

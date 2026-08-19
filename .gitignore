@@ -19,3 +19,8 @@ wrangler.jsonc
 # OS
 .DS_Store
 Thumbs.db
+
+# Wrangler local secrets — never commit; use Cloudflare secrets/Secrets Store
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
