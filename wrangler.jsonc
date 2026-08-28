@@ -1,0 +1,14 @@
+{
+  "name": "investor-agent",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-02-20",
+  "preview_urls": true,
+  "compatibility_flags": ["nodejs_compat"],
+  // Polyfill __dirname for CJS dependencies (e.g. @deno/shim-deno via yahoo-finance2)
+  "define": {
+    "__dirname": "\"/\""
+  },
+  "observability": {
+    "enabled": true
+  }
+}

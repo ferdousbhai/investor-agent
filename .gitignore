@@ -13,7 +13,6 @@ dist/
 .idea/
 
 # Cloudflare
-wrangler.jsonc
 .wrangler/
 
 # OS
