@@ -1,20 +1,27 @@
 # investor-agent
 
-## Delivery
+MCP server for market data, available through a stdio CLI and Cloudflare Worker transport.
 
-Prefer `main` — branches/PRs only if asked. CI runs `typecheck` + `tests` on push.
+## Code index
 
-## Rules
+- `src/server.ts` — `McpServer` construction and tool registration
+- `src/index.ts` — stdio entry point
+- `src/worker.ts` — Worker transport entry point
+- `src/tools/` — MCP tool implementations
+- `src/lib/yahoo.ts` — Yahoo client seam and market-data access
+- `src/lib/cache.ts`, `src/lib/retry.ts`, and `src/lib/fetch.ts` — request resilience
+- `src/lib/validation.ts` — shared input validation
+- `test/` — tool and library tests
+- `commands/` and `skills/` — Claude Code plugin surface, outside the MCP build
+- `wrangler.jsonc` — Worker configuration
 
-- Run `pnpm run typecheck` and `pnpm run test` before pushing; `pnpm run build` compiles to `dist/`.
-- Keep tool contracts in sync with implementation — types are authoritative.
+Tool contracts and TypeScript types are authoritative and must change together.
 
-## Index
+## Commands
 
-- [src/server.ts](src/server.ts) — entry
-- [src/worker.ts](src/worker.ts) — worker bindings
-- [src/tools/](src/tools/) — tool definitions
-- [src/lib/](src/lib/) — shared helpers
-- [test/](test/) — tests
-- [package.json](package.json) — scripts: `test`/`typecheck`/`build`
-- [wrangler.jsonc](wrangler.jsonc) — bindings (if present)
+```sh
+pnpm run typecheck
+pnpm run test
+pnpm run lint
+pnpm run build
+```
