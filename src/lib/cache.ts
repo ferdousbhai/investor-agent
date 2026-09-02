@@ -10,7 +10,6 @@ const MAX_ENTRIES = 500;
 const store = new Map<string, { value: unknown; expires: number }>();
 const inflight = new Map<string, Promise<unknown>>();
 
-/** Clear all cached entries. Useful for testing. */
 export function clearCache(): void {
   store.clear();
   inflight.clear();

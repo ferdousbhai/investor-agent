@@ -1,7 +1,6 @@
 import { createMcpHandler } from "agents/mcp";
 import { createServer } from "./server.js";
 
-/** No bindings are configured in wrangler.jsonc; `env` is forwarded to the MCP handler untouched. */
 interface WorkerEnv {}
 
 export default {

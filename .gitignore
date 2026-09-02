@@ -1,21 +1,15 @@
-# Dependencies
 node_modules/
 
-# Environment and tools
 .claude
 .env
 
-# Build and distribution
 dist/
 
-# IDE
 .vscode/
 .idea/
 
-# Cloudflare
 .wrangler/
 
-# OS
 .DS_Store
 Thumbs.db
 

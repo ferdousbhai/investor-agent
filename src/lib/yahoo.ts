@@ -87,7 +87,6 @@ function createYahooClient() {
   };
 }
 
-/** The Yahoo surface this codebase depends on, and the seam tests stand in for. */
 export type YahooClient = ReturnType<typeof createYahooClient>;
 
 let client: YahooClient = createYahooClient();
@@ -96,12 +95,10 @@ export function yahooClient(): YahooClient {
   return client;
 }
 
-/** Install a stand-in client; tests use this instead of mocking the module. */
 export function setYahooClient(next: YahooClient): void {
   client = next;
 }
 
-/** Restore the real Yahoo client. */
 export function resetYahooClient(): void {
   client = createYahooClient();
 }

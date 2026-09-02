@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-// ─── validation.ts ──────────────────────────────────────────────────────────
-
 import { validateTicker } from "../src/lib/validation.js";
+import { withRetry } from "../src/lib/retry.js";
+import { getOrFetch } from "../src/lib/cache.js";
 
 describe("validateTicker", () => {
   it("uppercases and trims ticker", () => {
@@ -26,10 +25,6 @@ describe("validateTicker", () => {
   });
 });
 
-// ─── retry.ts ───────────────────────────────────────────────────────────────
-
-import { withRetry } from "../src/lib/retry.js";
-
 describe("withRetry", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -50,7 +45,6 @@ describe("withRetry", () => {
 
     const promise = withRetry(fn, { initialDelayMs: 10, maxAttempts: 3 });
 
-    // Advance past the delay
     await vi.advanceTimersByTimeAsync(50);
 
     const result = await promise;
@@ -168,15 +162,11 @@ describe("withRetry", () => {
   });
 });
 
-// ─── cache.ts ───────────────────────────────────────────────────────────────
-
-import { getOrFetch } from "../src/lib/cache.js";
-
 describe("getOrFetch", () => {
   it("returns fetcher result on cache miss", async () => {
     const fetcher = vi.fn().mockResolvedValue({ ticker: "AAPL", price: 150 });
-    // Use unique key to avoid hitting cache from other tests
-    const result = await getOrFetch(`test-miss-${Date.now()}`, fetcher, 300);
+    const uniqueCacheKey = `test-miss-${Date.now()}`;
+    const result = await getOrFetch(uniqueCacheKey, fetcher, 300);
     expect(result).toEqual({ ticker: "AAPL", price: 150 });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });

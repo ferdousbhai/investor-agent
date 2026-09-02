@@ -2,16 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
 import { resetYahooClient, setYahooClient } from "../src/lib/yahoo.js";
 
-// ─── Stand-in Yahoo client ──────────────────────────────────────────────────
-
 const yahoo = {
   quoteSummary: vi.fn(),
   historical: vi.fn(),
   options: vi.fn(),
   screener: vi.fn(),
 };
-
-// ─── Mock fetch globally ────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
 
@@ -20,7 +16,6 @@ beforeEach(() => {
   mockFetch.mockReset();
   clearCache();
 
-  // Reset the stand-in to prevent call history leaking between tests
   yahoo.quoteSummary.mockReset();
   yahoo.historical.mockReset();
   yahoo.options.mockReset();
