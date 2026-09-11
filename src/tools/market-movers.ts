@@ -22,8 +22,8 @@ export interface MarketMover {
   Price: number;
   Change: number;
   "Change %": number;
-  Volume: number;
-  "Market Cap": number;
+  Volume: number | undefined;
+  "Market Cap": number | undefined;
 }
 
 const MAX_FETCH = 100;
@@ -35,8 +35,10 @@ const quoteSchema = z.object({
   regularMarketPrice: z.number().finite(),
   regularMarketChange: z.number().finite(),
   regularMarketChangePercent: z.number().finite(),
-  regularMarketVolume: z.number().finite().nonnegative(),
-  marketCap: z.number().finite().nonnegative(),
+  // Yahoo's own screener contract leaves these two optional; ETFs and funds routinely omit
+  // marketCap, so requiring them would reject the whole page over one such row.
+  regularMarketVolume: z.number().finite().nonnegative().optional(),
+  marketCap: z.number().finite().nonnegative().optional(),
 }).refine((quote) => quote.shortName !== undefined || quote.longName !== undefined, {
   message: "quote must include a shortName or longName",
 });
