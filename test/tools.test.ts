@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
-import { resetYahooClient, setYahooClient } from "../src/lib/yahoo.js";
+import { resetYahooClient, setYahooClient, quoteSummary, getHistorical, getOptions } from "../src/lib/yahoo.js";
+import { fetchJson } from "../src/lib/fetch.js";
 
 const yahoo = {
   quoteSummary: vi.fn(),
@@ -27,8 +28,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resetYahooClient();
 });
-
-const { fetchJson } = await import("../src/lib/fetch.js");
 
 describe("fetchJson", () => {
   it("returns parsed JSON on success", async () => {
@@ -66,8 +65,6 @@ describe("fetchJson", () => {
     expect(callHeaders).toHaveProperty("User-Agent");
   });
 });
-
-const { quoteSummary, getHistorical, getOptions } = await import("../src/lib/yahoo.js");
 
 describe("quoteSummary", () => {
   it("returns quote summary data", async () => {
