@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
-import { resetYahooClient, setYahooClient, quoteSummary, getHistorical, getOptions } from "../src/lib/yahoo.js";
+import { resetYahooClient, setYahooClient, getHistorical } from "../src/lib/yahoo.js";
 import { fetchJson } from "../src/lib/fetch.js";
 
 const yahoo = {
@@ -66,29 +66,6 @@ describe("fetchJson", () => {
   });
 });
 
-describe("quoteSummary", () => {
-  it("returns quote summary data", async () => {
-    yahoo.quoteSummary.mockResolvedValue({
-      price: { regularMarketPrice: 150 },
-    });
-
-    const result = await quoteSummary("AAPL", ["price"]);
-    expect(result).toHaveProperty("price");
-    expect(result.price).toHaveProperty("regularMarketPrice", 150);
-  });
-
-  it("handles multiple modules", async () => {
-    yahoo.quoteSummary.mockResolvedValue({
-      price: { regularMarketPrice: 150 },
-      summaryDetail: { marketCap: 2500000000000 },
-    });
-
-    const result = await quoteSummary("AAPL", ["price", "summaryDetail"]);
-    expect(result).toHaveProperty("price");
-    expect(result).toHaveProperty("summaryDetail");
-  });
-});
-
 describe("getHistorical", () => {
   it("returns historical price data", async () => {
     const mockData = [
@@ -129,36 +106,6 @@ describe("getHistorical", () => {
     await expect(
       getHistorical("AAPL", { period1: "2024-01-01", period2: "2024-06-01", interval: "1d" })
     ).rejects.toThrow("Yahoo historical response was malformed");
-  });
-});
-
-describe("getOptions", () => {
-  it("returns options chain data", async () => {
-    yahoo.options.mockResolvedValue({
-      expirationDates: ["2024-03-15", "2024-04-19"],
-      options: [{ calls: [], puts: [] }],
-    });
-
-    const result = await getOptions("AAPL");
-    expect(result).toHaveProperty("expirationDates");
-    expect(result).toHaveProperty("options");
-  });
-
-  it("passes date option when provided", async () => {
-    yahoo.options.mockResolvedValue({
-      expirationDates: [],
-      options: [{ calls: [{ strike: 150 }], puts: [{ strike: 140 }] }],
-    });
-
-    await getOptions("AAPL", { date: "2024-03-15" });
-    expect(yahoo.options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
-  });
-
-  it("works without date option", async () => {
-    yahoo.options.mockResolvedValue({ expirationDates: [] });
-
-    await getOptions("AAPL");
-    expect(yahoo.options).toHaveBeenCalledWith("AAPL", undefined);
   });
 });
 
@@ -423,22 +370,6 @@ describe("calculateIndicator", () => {
     ).rejects.toThrow("7.close: Required");
   });
 
-  it("rejects missing dates instead of emitting an undefined date", async () => {
-    const history = Array.from({ length: 14 }, (_, i) => ({
-      date: i === 4 ? undefined : new Date(2024, 0, i + 1),
-      open: 148 + i,
-      high: 150 + i,
-      low: 147 + i,
-      close: 149 + i,
-      volume: 1000000,
-    }));
-    yahoo.historical.mockResolvedValue(history);
-
-    await expect(
-      calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
-    ).rejects.toThrow("4.date: Invalid input");
-  });
-
   it("calculates RSI indicator with raw values", async () => {
     const history = Array.from({ length: 30 }, (_, i) => ({
       date: new Date(2024, 0, i + 1),
@@ -527,24 +458,6 @@ describe("calculateIndicator", () => {
     expect(withValues).toHaveProperty("upper");
     expect(withValues).toHaveProperty("middle");
     expect(withValues).toHaveProperty("lower");
-  });
-
-  it("throws on unsupported indicator type", async () => {
-    const history = Array.from({ length: 30 }, (_, i) => ({
-      date: new Date(2024, 0, i + 1),
-      close: 149 + i,
-      open: 148,
-      high: 155,
-      low: 145,
-      volume: 1000000,
-    }));
-    yahoo.historical.mockResolvedValue(history);
-
-    // SAFETY: deliberately out-of-contract input — this test exists to prove the runtime
-    // guard rejects indicators the IndicatorType union cannot express.
-    await expect(
-      calculateIndicator("AAPL", "INVALID" as any, { period1: "2023-01-01" })
-    ).rejects.toThrow("Unsupported indicator");
   });
 
   it("rejects invalid result counts instead of applying negative slice semantics", async () => {

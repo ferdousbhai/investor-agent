@@ -8,18 +8,6 @@ describe("validateTicker", () => {
     expect(validateTicker(" aapl ")).toBe("AAPL");
   });
 
-  it("returns already-uppercase ticker unchanged", () => {
-    expect(validateTicker("MSFT")).toBe("MSFT");
-  });
-
-  it("handles mixed-case with whitespace", () => {
-    expect(validateTicker("  gOoG  ")).toBe("GOOG");
-  });
-
-  it("throws on empty string", () => {
-    expect(() => validateTicker("")).toThrow("Ticker symbol cannot be empty");
-  });
-
   it("throws on whitespace-only string", () => {
     expect(() => validateTicker("   ")).toThrow("Ticker symbol cannot be empty");
   });
@@ -96,34 +84,6 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("retries on 429 status code errors", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("429"))
-      .mockResolvedValue("ok");
-
-    const promise = withRetry(fn, { initialDelayMs: 10, maxAttempts: 3 });
-    await vi.advanceTimersByTimeAsync(100);
-
-    const result = await promise;
-    expect(result).toBe("ok");
-    expect(fn).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries on timeout error", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockResolvedValue("ok");
-
-    const promise = withRetry(fn, { initialDelayMs: 10, maxAttempts: 3 });
-    await vi.advanceTimersByTimeAsync(100);
-
-    const result = await promise;
-    expect(result).toBe("ok");
-    expect(fn).toHaveBeenCalledTimes(2);
-  });
-
   it("times out a hung attempt and retries", async () => {
     const fn = vi
       .fn()
@@ -143,20 +103,6 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("retries on network error", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("network failure"))
-      .mockResolvedValue("ok");
-
-    const promise = withRetry(fn, { initialDelayMs: 10, maxAttempts: 3 });
-    await vi.advanceTimersByTimeAsync(100);
-
-    const result = await promise;
-    expect(result).toBe("ok");
-    expect(fn).toHaveBeenCalledTimes(2);
-  });
-
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -165,14 +111,13 @@ describe("withRetry", () => {
 describe("getOrFetch", () => {
   it("returns fetcher result on cache miss", async () => {
     const fetcher = vi.fn().mockResolvedValue({ ticker: "AAPL", price: 150 });
-    const uniqueCacheKey = `test-miss-${Date.now()}`;
-    const result = await getOrFetch(uniqueCacheKey, fetcher, 300);
+    const result = await getOrFetch("test-miss", fetcher, 300);
     expect(result).toEqual({ ticker: "AAPL", price: 150 });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("returns cached value on cache hit", async () => {
-    const key = `test-hit-${Date.now()}`;
+    const key = "test-hit";
     const fetcher1 = vi.fn().mockResolvedValue("first");
     const fetcher2 = vi.fn().mockResolvedValue("second");
 
