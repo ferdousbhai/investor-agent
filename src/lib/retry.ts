@@ -1,18 +1,3 @@
-/**
- * A failed attempt. A throw can carry anything, so the shape is decoded once at
- * the `catch` boundary and every retry decision reads these named fields.
- */
-export type AttemptFailure = {
-  /** Lowercased rendering of the thrown value, for message matching. */
-  readonly description: string;
-};
-
-function toAttemptFailure(cause: unknown): AttemptFailure {
-  return {
-    description: String(cause).toLowerCase(),
-  };
-}
-
 export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: {
@@ -21,7 +6,8 @@ export async function withRetry<T>(
     maxDelayMs?: number;
     multiplier?: number;
     attemptTimeoutMs?: number;
-    shouldRetry?: (failure: AttemptFailure) => boolean;
+    /** Receives the thrown value rendered as a lowercased string, for message matching. */
+    shouldRetry?: (description: string) => boolean;
   } = {}
 ): Promise<T> {
   const {
@@ -40,7 +26,7 @@ export async function withRetry<T>(
     try {
       return await withTimeout(fn(), attemptTimeoutMs);
     } catch (error) {
-      if (attempt === maxAttempts || !shouldRetry(toAttemptFailure(error))) {
+      if (attempt === maxAttempts || !shouldRetry(String(error).toLowerCase())) {
         throw error;
       }
       const delay = Math.min(initialDelayMs * multiplier ** (attempt - 1), maxDelayMs);
@@ -78,6 +64,6 @@ const RETRYABLE_MARKERS = [
   "504",
 ] as const;
 
-function isRetryableFailure(failure: AttemptFailure): boolean {
-  return RETRYABLE_MARKERS.some((marker) => failure.description.includes(marker));
+function isRetryableFailure(description: string): boolean {
+  return RETRYABLE_MARKERS.some((marker) => description.includes(marker));
 }

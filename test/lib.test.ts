@@ -86,7 +86,7 @@ describe("withRetry", () => {
     const promise = withRetry(fn, {
       maxAttempts: 3,
       initialDelayMs: 10,
-      shouldRetry: (failure) => failure.description.includes("custom retryable"),
+      shouldRetry: (description) => description.includes("custom retryable"),
     });
 
     await vi.advanceTimersByTimeAsync(100);
