@@ -1,5 +1,7 @@
 import type { ESTree } from "@oxlint/plugins";
 
+import { walkNodes, type VisitorKeys } from "./node-walk.ts";
+
 const BUILT_INS = new Set([
 	"Record",
 	"Readonly",
@@ -41,56 +43,59 @@ export type TypeEnvironment = {
 	readonly shadowedBuiltIns: ReadonlySet<string>;
 };
 
-function declaredStatement(statement: ESTree.Statement): ESTree.Node | null {
-	return statement.type === "ExportNamedDeclaration" ||
-		statement.type === "ExportDefaultDeclaration"
-		? (statement.declaration ?? null)
-		: statement;
-}
-
-export function createTypeEnvironment(program: ESTree.Program): TypeEnvironment {
+export function createTypeEnvironment(
+	program: ESTree.Program,
+	visitorKeys: VisitorKeys,
+): TypeEnvironment {
 	const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
+	const duplicatedAliases = new Set<string>();
 	const interfaces = new Map<string, ESTree.TSInterfaceDeclaration[]>();
 	const shadowedBuiltIns = new Set<string>();
 
-	for (const statement of program.body) {
-		const declaration = declaredStatement(statement);
-		if (declaration?.type === "ImportDeclaration") {
-			for (const specifier of declaration.specifiers) {
+	// Declarations are collected from the whole file, not just its top level, so a type
+	// declared inside a function or namespace still resolves. Resolution is by name only,
+	// so a name declared in more than one scope is dropped rather than resolved across them.
+	walkNodes(program, visitorKeys, (node) => {
+		if (node.type === "ImportDeclaration") {
+			for (const specifier of node.specifiers) {
 				if (BUILT_INS.has(specifier.local.name)) shadowedBuiltIns.add(specifier.local.name);
 			}
-			continue;
+			return;
 		}
 
-		if (declaration?.type === "TSTypeAliasDeclaration") {
-			const existing = aliases.get(declaration.id.name);
-			if (existing === undefined) aliases.set(declaration.id.name, declaration);
-			else shadowedBuiltIns.add(declaration.id.name);
-			if (BUILT_INS.has(declaration.id.name)) shadowedBuiltIns.add(declaration.id.name);
-			continue;
+		if (node.type === "TSTypeAliasDeclaration") {
+			const name = node.id.name;
+			if (aliases.has(name) || duplicatedAliases.has(name)) {
+				aliases.delete(name);
+				duplicatedAliases.add(name);
+				shadowedBuiltIns.add(name);
+			} else {
+				aliases.set(name, node);
+			}
+			if (BUILT_INS.has(name)) shadowedBuiltIns.add(name);
+			return;
 		}
 
-		if (declaration?.type === "TSInterfaceDeclaration") {
-			const declarations = interfaces.get(declaration.id.name) ?? [];
-			declarations.push(declaration);
-			interfaces.set(declaration.id.name, declarations);
-			if (BUILT_INS.has(declaration.id.name)) shadowedBuiltIns.add(declaration.id.name);
-			continue;
+		if (node.type === "TSInterfaceDeclaration") {
+			const declarations = interfaces.get(node.id.name) ?? [];
+			declarations.push(node);
+			interfaces.set(node.id.name, declarations);
+			if (BUILT_INS.has(node.id.name)) shadowedBuiltIns.add(node.id.name);
+			return;
 		}
 
-		if (declaration?.type === "TSEnumDeclaration") {
-			if (BUILT_INS.has(declaration.id.name)) shadowedBuiltIns.add(declaration.id.name);
-			continue;
+		if (node.type === "TSEnumDeclaration") {
+			if (BUILT_INS.has(node.id.name)) shadowedBuiltIns.add(node.id.name);
+			return;
 		}
 
 		if (
-			(declaration?.type === "ClassDeclaration" ||
-				declaration?.type === "FunctionDeclaration") &&
-			declaration.id !== null
+			(node.type === "ClassDeclaration" || node.type === "FunctionDeclaration") &&
+			node.id !== null
 		) {
-			if (BUILT_INS.has(declaration.id.name)) shadowedBuiltIns.add(declaration.id.name);
+			if (BUILT_INS.has(node.id.name)) shadowedBuiltIns.add(node.id.name);
 		}
-	}
+	});
 
 	return { aliases, interfaces, shadowedBuiltIns };
 }

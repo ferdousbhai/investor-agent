@@ -3,6 +3,7 @@ import { defineRule } from "@oxlint/plugins";
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+import { collectTypeAliases } from "../shared/type-aliases.ts";
 
 type Parameter = ESTree.ParamPattern;
 type ParameterOwner =
@@ -100,14 +101,12 @@ export const noObjectParametersRule = defineRule({
 		return {
 			Program(node) {
 				aliases.clear();
-				for (const statement of node.body) {
-					const declaration =
-						statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
-					if (
-						declaration?.type === "TSTypeAliasDeclaration" &&
-						(declaration.typeParameters === null || declaration.typeParameters === undefined)
-					) {
-						aliases.set(declaration.id.name, declaration.typeAnnotation);
+				for (const [name, declaration] of collectTypeAliases(
+					node,
+					context.sourceCode.visitorKeys,
+				)) {
+					if (declaration.typeParameters === null || declaration.typeParameters === undefined) {
+						aliases.set(name, declaration.typeAnnotation);
 					}
 				}
 			},
