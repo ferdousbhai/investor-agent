@@ -56,9 +56,9 @@ export type HistoricalRow = z.infer<typeof historicalRowSchema>;
 type ScreenerId = "day_gainers" | "day_losers" | "most_actives";
 
 type HistoricalQuery = {
-  period1: string | Date;
-  period2?: string | Date;
-  interval?: "1d" | "1wk" | "1mo";
+  period1: string;
+  period2: string;
+  interval: "1d" | "1wk" | "1mo";
 };
 
 type OptionsQuery = { date?: string };
@@ -121,16 +121,11 @@ export async function getHistorical(
   opts: HistoricalQuery
 ): Promise<HistoricalRow[]> {
   const ticker = validateTicker(symbol);
-  const cleanOpts = {
-    period1: opts.period1,
-    ...(opts.period2 !== undefined && { period2: opts.period2 }),
-    ...(opts.interval !== undefined && { interval: opts.interval }),
-  };
-  const cacheKey = `hist:${ticker}:${String(cleanOpts.period1)}:${String(cleanOpts.period2 ?? "")}:${cleanOpts.interval ?? "1d"}`;
+  const cacheKey = `hist:${ticker}:${opts.period1}:${opts.period2}:${opts.interval}`;
   return getOrFetch<HistoricalRow[]>(
     cacheKey,
     async () => {
-      const raw = await withRetry(() => yahooClient().historical(ticker, cleanOpts));
+      const raw = await withRetry(() => yahooClient().historical(ticker, opts));
       const parsed = historicalResponseSchema.safeParse(raw);
       if (!parsed.success) {
         throw new Error(`Yahoo historical response was malformed: ${describeSchemaError(parsed.error)}`);

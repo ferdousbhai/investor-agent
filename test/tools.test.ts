@@ -97,14 +97,14 @@ describe("getHistorical", () => {
     ];
     yahoo.historical.mockResolvedValue(mockData);
 
-    const result = await getHistorical("AAPL", { period1: "2024-01-01" });
+    const result = await getHistorical("AAPL", {
+      period1: "2024-01-01",
+      period2: "2024-06-01",
+      interval: "1d",
+    });
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(2);
     expect(result[0]).toHaveProperty("close", 149);
-    expect(yahoo.historical).toHaveBeenCalledWith(
-      "AAPL",
-      expect.not.objectContaining({ period2: undefined })
-    );
   });
 
   it("passes interval option", async () => {
@@ -127,7 +127,7 @@ describe("getHistorical", () => {
     ]);
 
     await expect(
-      getHistorical("AAPL", { period1: "2024-01-01" })
+      getHistorical("AAPL", { period1: "2024-01-01", period2: "2024-06-01", interval: "1d" })
     ).rejects.toThrow("Yahoo historical response was malformed");
   });
 });
