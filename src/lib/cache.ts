@@ -7,12 +7,13 @@ export const CacheTTL = {
 } as const;
 
 const MAX_ENTRIES = 500;
+// Only resolved values are shared through this module-global map. Pending promises are
+// deliberately not coalesced across callers: on Workers this module scope spans every
+// request in the isolate, and awaiting another request's I/O is not permitted there.
 const store = new Map<string, { value: unknown; expires: number }>();
-const inflight = new Map<string, Promise<unknown>>();
 
 export function clearCache(): void {
   store.clear();
-  inflight.clear();
 }
 
 export async function getOrFetch<T>(
@@ -31,14 +32,7 @@ export async function getOrFetch<T>(
     store.delete(key);
   }
 
-  const existing = inflight.get(key);
-  if (existing) {
-    // SAFETY: same key ownership invariant — the in-flight promise was created by a
-    // getOrFetch call using this key, so it resolves to that key's value type.
-    return existing as Promise<T>;
-  }
-
-  const promise = fetcher()
+  return fetcher()
     .then((value) => {
       if (store.size >= MAX_ENTRIES) {
         const expireTime = Date.now();
@@ -52,11 +46,5 @@ export async function getOrFetch<T>(
       }
       store.set(key, { value, expires: Date.now() + ttlSeconds * 1000 });
       return value;
-    })
-    .finally(() => {
-      inflight.delete(key);
     });
-
-  inflight.set(key, promise);
-  return promise;
 }
