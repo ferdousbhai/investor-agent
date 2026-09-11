@@ -13,7 +13,7 @@ function declaredTypeName(statement: ESTree.Directive | ESTree.Statement): strin
 		: null;
 }
 
-// Type names bound by an enclosing scope — type parameters, plus aliases and interfaces declared
+// Type names bound by an enclosing scope: type parameters, plus aliases and interfaces declared
 // inside a block or module body. The rules' alias tables only hold Program-level declarations, so
 // resolving one of these names against those tables would apply an unrelated top-level type.
 export function shadowedTypeNames(

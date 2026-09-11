@@ -180,7 +180,7 @@ function aliasSubstitution(
 
 // `shadowedNames` holds the type names bound by the use site's enclosing scopes (see
 // shared/shadowed-type-names.ts). The environment's tables only hold Program-level declarations,
-// so a shadowed name must never be resolved against them — it belongs to a nearer declaration.
+// so a shadowed name must never be resolved against them; it belongs to a nearer declaration.
 function unsafeDirectValue(
 	type: ESTree.TSType,
 	environment: TypeEnvironment,
@@ -209,7 +209,7 @@ function unsafeDirectValue(
 		);
 		if (unsafeMembers.includes("any")) return "any";
 		return unsafeMembers.length > 0 && unsafeMembers.every((member) => member !== null)
-			? unsafeMembers[0]
+			? (unsafeMembers[0] ?? null)
 			: null;
 	}
 	if (unwrapped.type !== "TSTypeReference") return null;
