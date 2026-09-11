@@ -42,11 +42,8 @@ function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): bool
   if (!isTestFrameworkObject(sourceCode, callee.object)) return false;
   const property = callee.property;
   const method = callee.computed
-    ? property.type === "Literal" &&
-      (property.value === "doMock" ||
-        property.value === "mock" ||
-        property.value === "unstable_mockModule")
-      ? property.value
+    ? property.type === "Literal"
+      ? String(property.value)
       : null
     : property.type === "Identifier"
       ? property.name

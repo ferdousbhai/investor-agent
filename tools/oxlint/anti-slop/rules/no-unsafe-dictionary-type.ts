@@ -5,6 +5,7 @@ import {
 	classifyUnsafeDictionaryValue,
 	createTypeEnvironment,
 	type TypeEnvironment,
+	typeReferenceName,
 	type UnsafeDictionaryValue,
 } from "../shared/dictionary-types.ts";
 
@@ -52,10 +53,6 @@ const typeNodeKinds: ReadonlySet<string> = new Set([
 
 function isTypeNode(node: ESTree.Node): node is ESTree.TSType {
 	return typeNodeKinds.has(node.type);
-}
-
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-	return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
 function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {

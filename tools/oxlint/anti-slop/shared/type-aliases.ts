@@ -26,3 +26,17 @@ export function collectTypeAliases(
 	});
 	return aliases;
 }
+
+/**
+ * The alias name a type reference names, or null when the type is not a bare reference.
+ * A reference that applies type arguments is not a bare alias, so it resolves to null.
+ */
+export function referencedAliasName(type: ESTree.TSType): string | null {
+	if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
+	if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
+	return type.typeArguments === null ||
+		type.typeArguments === undefined ||
+		type.typeArguments.params.length === 0
+		? type.typeName.name
+		: null;
+}

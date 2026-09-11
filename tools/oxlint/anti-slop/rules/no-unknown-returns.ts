@@ -4,17 +4,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 import type { FunctionLike } from "../shared/function-parameters.ts";
 import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
-import { collectTypeAliases } from "../shared/type-aliases.ts";
-
-function referencedAliasName(type: ESTree.TSType): string | null {
-  if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
-  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
-  return type.typeArguments === null ||
-    type.typeArguments === undefined ||
-    type.typeArguments.params.length === 0
-    ? type.typeName.name
-    : null;
-}
+import { collectTypeAliases, referencedAliasName } from "../shared/type-aliases.ts";
 
 /** Ban function contracts that return unknown instead of a parsed domain type. */
 export const noUnknownReturnsRule = defineRule({

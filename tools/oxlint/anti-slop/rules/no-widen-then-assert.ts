@@ -1,6 +1,9 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree, Variable } from "@oxlint/plugins";
 
+import { typeReferenceName } from "../shared/dictionary-types.ts";
+import { unwrapParentheses } from "../shared/expressions.ts";
+
 type BroadTypeKind = "top" | "object" | "record";
 
 type KnownValueEvidence = {
@@ -15,20 +18,10 @@ const functionBoundaryTypes = new Set([
   "TSEmptyBodyFunctionExpression",
 ]);
 
-function unwrapExpressionParentheses(expression: ESTree.Expression): ESTree.Expression {
-  let current = expression;
-  while (current.type === "ParenthesizedExpression") current = current.expression;
-  return current;
-}
-
 function unwrapTypeParentheses(type: ESTree.TSType): ESTree.TSType {
   let current = type;
   while (current.type === "TSParenthesizedType") current = current.typeAnnotation;
   return current;
-}
-
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-  return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
 function isUnknownOrAnyType(type: ESTree.TSType): boolean {
@@ -91,13 +84,13 @@ function broadTypeKind(type: ESTree.TSType): BroadTypeKind | null {
 function assertedExpression(
   node: ESTree.TSAsExpression | ESTree.TSTypeAssertion,
 ): ESTree.Expression {
-  return unwrapExpressionParentheses(node.expression);
+  return unwrapParentheses(node.expression);
 }
 
 function assertionFromExpression(
   expression: ESTree.Expression,
 ): ESTree.TSAsExpression | ESTree.TSTypeAssertion | null {
-  const unwrapped = unwrapExpressionParentheses(expression);
+  const unwrapped = unwrapParentheses(expression);
   return unwrapped.type === "TSAsExpression" || unwrapped.type === "TSTypeAssertion"
     ? unwrapped
     : null;
@@ -203,7 +196,7 @@ function knownValueEvidence(
   boundary: ESTree.Node | null,
   visitedVariables: ReadonlySet<Variable>,
 ): KnownValueEvidence | null {
-  const unwrapped = unwrapExpressionParentheses(expression);
+  const unwrapped = unwrapParentheses(expression);
 
   if (unwrapped.type === "TSAsExpression" || unwrapped.type === "TSTypeAssertion") {
     if (broadTypeKind(unwrapped.typeAnnotation) !== null) return null;

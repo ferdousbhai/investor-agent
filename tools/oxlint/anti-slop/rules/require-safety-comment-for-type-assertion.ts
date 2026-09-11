@@ -2,7 +2,12 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
-type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+import {
+  isConstAssertion,
+  type TypeAssertionExpression,
+} from "../shared/type-assertions.ts";
+
+const SAFETY_PATTERN = /\bSAFETY\s*:/u;
 
 const commentOwnerKinds = new Set([
   "ExpressionStatement",
@@ -12,30 +17,19 @@ const commentOwnerKinds = new Set([
   "VariableDeclaration",
 ]);
 
-function isConstAssertion(node: TypeAssertion): boolean {
-  return (
-    node.typeAnnotation.type === "TSTypeReference" &&
-    node.typeAnnotation.typeName.type === "Identifier" &&
-    node.typeAnnotation.typeName.name === "const"
-  );
-}
+function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertionExpression): boolean {
+  const hasSafetyBefore = (target: ESTree.Node) =>
+    sourceCode
+      .getCommentsBefore(target)
+      .some((comment) => comment.end <= node.start && SAFETY_PATTERN.test(comment.value));
 
-function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
   let current: ESTree.Node = node;
   while (true) {
-    if (
-      sourceCode
-        .getCommentsBefore(current)
-        .some((comment) => comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value))
-    ) {
-      return true;
-    }
+    if (hasSafetyBefore(current)) return true;
     if (commentOwnerKinds.has(current.type)) {
       const { parent } = current;
       if (parent.type === "ExportNamedDeclaration" || parent.type === "ExportDefaultDeclaration") {
-        return sourceCode
-          .getCommentsBefore(parent)
-          .some((comment) => comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value));
+        return hasSafetyBefore(parent);
       }
       return false;
     }
@@ -58,7 +52,7 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
     },
   },
   createOnce(context) {
-    const checkAssertion = (node: TypeAssertion) => {
+    const checkAssertion = (node: TypeAssertionExpression) => {
       if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node)) return;
       context.report({ node, messageId: "missingSafetyComment" });
     };

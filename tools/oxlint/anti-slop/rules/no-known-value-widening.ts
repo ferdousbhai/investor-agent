@@ -8,25 +8,13 @@ import {
 	type WideningTargetKind,
 } from "../shared/dictionary-types.ts";
 
+import { unwrapExpression } from "../shared/expressions.ts";
+
 import { resolveVariable } from "../shared/scope.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
-
-function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
-	let current = expression;
-	while (
-		current.type === "ParenthesizedExpression" ||
-		current.type === "TSAsExpression" ||
-		current.type === "TSSatisfiesExpression" ||
-		current.type === "TSTypeAssertion" ||
-		current.type === "TSNonNullExpression"
-	) {
-		current = current.expression;
-	}
-	return current;
-}
 
 function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
 	if (variable.defs.length !== 1) return null;
