@@ -22,8 +22,6 @@ export type IndicatorRow =
   | { date: string; macd: number | null; signal: number | null; histogram: number | null }
   | { date: string; upper: number | null; middle: number | null; lower: number | null };
 
-export type IndicatorResult = IndicatorRow[];
-
 function requirePositiveInteger(value: number, name: string): number {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive integer`);
@@ -40,7 +38,7 @@ export async function calculateIndicator(
   ticker: string,
   indicator: IndicatorType,
   opts: IndicatorOpts
-): Promise<IndicatorResult> {
+): Promise<IndicatorRow[]> {
   const period1 = opts.period1 ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   const period2 = opts.period2 ?? new Date().toISOString().slice(0, 10);
   const timeperiod = requirePositiveInteger(opts.timeperiod ?? 14, "timeperiod");
@@ -58,7 +56,7 @@ export async function calculateIndicator(
   else if (indicator === "BBANDS") cacheKey += `:${timeperiod}:${nbdev}`;
   else cacheKey += `:${timeperiod}`;
 
-  const full = await getOrFetch<IndicatorResult>(
+  const full = await getOrFetch<IndicatorRow[]>(
     cacheKey,
     async () => {
       const history = await getHistorical(ticker, { period1, period2, interval: "1d" });
