@@ -30,7 +30,16 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     ) {
       return true;
     }
-    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
+    if (commentOwnerKinds.has(current.type)) {
+      const { parent } = current;
+      if (parent.type === "ExportNamedDeclaration" || parent.type === "ExportDefaultDeclaration") {
+        return sourceCode
+          .getCommentsBefore(parent)
+          .some((comment) => comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value));
+      }
+      return false;
+    }
+    if (current.parent.type === "Program") return false;
     current = current.parent;
   }
 }
