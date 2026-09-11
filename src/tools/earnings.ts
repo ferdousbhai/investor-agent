@@ -24,17 +24,22 @@ export async function fetchNasdaqEarningsCalendar(
   if (!Number.isInteger(limit) || limit < 1) {
     throw new Error("Limit must be a positive integer");
   }
-  const dateStr = date ?? new Date().toISOString().slice(0, 10);
+  // NASDAQ keys this calendar by US exchange day, so "today" must be resolved in
+  // exchange time — a UTC date rolls over five hours early and is then cached.
+  const dateStr =
+    date ?? new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 
   return getOrFetch<EarningsCalendarRow[]>(
     `earnings_cal:${dateStr}`,
     async () => {
       const raw = await fetchJson<{
-        data?: { rows?: Array<Record<string, string>> | null };
+        data?: { rows?: Array<Record<string, string>> | null } | null;
       }>(`https://api.nasdaq.com/api/calendar/earnings?date=${dateStr}`, NASDAQ_HEADERS);
 
+      // A null `data` or `rows` is NASDAQ's "no reports scheduled" answer (weekends and
+      // holidays); a present `data` without `rows` is malformed and must still fail.
       const rawRows = raw.data?.rows;
-      if (rawRows === null) return [];
+      if (raw.data === null || rawRows === null) return [];
       if (!Array.isArray(rawRows)) {
         throw new Error("NASDAQ earnings response did not include a rows array");
       }
