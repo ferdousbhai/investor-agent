@@ -80,20 +80,18 @@ export async function calculateIndicator(
       if (indicator === "SMA") {
         const sma = new SMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
-          const result = sma.update(closes[i], false);
-          indicatorRows.push({ date: dates[i], sma: result !== null ? Number(result) : null });
+          indicatorRows.push({ date: dates[i], sma: sma.update(closes[i], false) });
         }
       } else if (indicator === "EMA") {
         const ema = new EMA(timeperiod);
         for (let i = 0; i < history.length; i++) {
           const result = ema.update(closes[i], false);
-          indicatorRows.push({ date: dates[i], ema: ema.isStable ? Number(result) : null });
+          indicatorRows.push({ date: dates[i], ema: ema.isStable ? result : null });
         }
       } else if (indicator === "RSI") {
         const rsi = new RSI(timeperiod);
         for (let i = 0; i < history.length; i++) {
-          const result = rsi.update(closes[i], false);
-          indicatorRows.push({ date: dates[i], rsi: result !== null ? Number(result) : null });
+          indicatorRows.push({ date: dates[i], rsi: rsi.update(closes[i], false) });
         }
       } else if (indicator === "MACD") {
         const macd = new MACD(new EMA(fastperiod), new EMA(slowperiod), new EMA(signalperiod));
@@ -101,9 +99,9 @@ export async function calculateIndicator(
           const result = macd.update(closes[i], false);
           indicatorRows.push({
             date: dates[i],
-            macd: result ? Number(result.macd) : null,
-            signal: result ? Number(result.signal) : null,
-            histogram: result ? Number(result.histogram) : null,
+            macd: result ? result.macd : null,
+            signal: result ? result.signal : null,
+            histogram: result ? result.histogram : null,
           });
         }
       } else if (indicator === "BBANDS") {
@@ -112,9 +110,9 @@ export async function calculateIndicator(
           const result = bb.update(closes[i], false);
           indicatorRows.push({
             date: dates[i],
-            upper: result ? Number(result.upper) : null,
-            middle: result ? Number(result.middle) : null,
-            lower: result ? Number(result.lower) : null,
+            upper: result ? result.upper : null,
+            middle: result ? result.middle : null,
+            lower: result ? result.lower : null,
           });
         }
       } else {
