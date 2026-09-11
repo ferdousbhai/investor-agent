@@ -8,7 +8,9 @@ import {
 	type WideningTarget,
 } from "../shared/dictionary-types.ts";
 
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import { resolveVariable } from "../shared/scope.ts";
+
+import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
 
@@ -24,19 +26,6 @@ function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
 		current = current.expression;
 	}
 	return current;
-}
-
-function resolveVariable(
-	sourceCode: SourceCode,
-	identifier: ESTree.IdentifierReference,
-): Variable | null {
-	let scope: Scope | null = sourceCode.getScope(identifier);
-	while (scope !== null) {
-		const variable = scope.set.get(identifier.name);
-		if (variable !== undefined) return variable;
-		scope = scope.upper;
-	}
-	return null;
 }
 
 function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
