@@ -1,6 +1,5 @@
 import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
 
-/** Resolve an identifier to the binding for its name in the nearest enclosing scope. */
 export function resolveVariable(
 	sourceCode: SourceCode,
 	identifier: ESTree.IdentifierReference,

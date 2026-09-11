@@ -1,6 +1,6 @@
-import type { ESTree, SourceCode } from "@oxlint/plugins";
-
 import { resolveVariable } from "./scope.ts";
+
+import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
   if (expression.type !== "Identifier" || expression.name !== "Reflect") return false;
@@ -9,7 +9,6 @@ function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression):
   return variable === null || variable.defs.length === 0;
 }
 
-/** Reports whether a call target names one method on the global Reflect object. */
 export function isGlobalReflectMethodCall(
   sourceCode: SourceCode,
   callee: ESTree.Expression,

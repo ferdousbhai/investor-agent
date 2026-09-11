@@ -2,8 +2,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 export type Parameter = ESTree.ParamPattern;
 
-/** Every node kind that carries a parameter list and an optional return annotation. */
-export type FunctionLike =
+export type ParameterOwner =
 	| ESTree.ArrowFunctionExpression
 	| ESTree.Function
 	| ESTree.TSCallSignatureDeclaration
@@ -12,7 +11,6 @@ export type FunctionLike =
 	| ESTree.TSFunctionType
 	| ESTree.TSMethodSignature;
 
-/** The type annotation a parameter declares, looking through its binding wrappers. */
 export function parameterAnnotation(
 	parameter: Parameter,
 ): ESTree.TSTypeAnnotation | null | undefined {

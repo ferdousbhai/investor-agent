@@ -1,10 +1,9 @@
 import { defineRule } from "@oxlint/plugins";
 
+import { referencedAliasName } from "../shared/type-nodes.ts";
+
 import type { ESTree } from "@oxlint/plugins";
 
-import { collectTypeAliases, referencedAliasName } from "../shared/type-aliases.ts";
-
-/** Ban named aliases that merely conceal TypeScript's unknown top type. */
 export const noUnknownTypeAliasesRule = defineRule({
 	meta: {
 		type: "problem",
@@ -18,7 +17,7 @@ export const noUnknownTypeAliasesRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration> = new Map();
+		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
 		const resolvesToUnknown = (type: ESTree.TSType, visited = new Set<string>()): boolean => {
 			if (type.type === "TSUnknownKeyword") return true;
@@ -40,7 +39,14 @@ export const noUnknownTypeAliasesRule = defineRule({
 
 		return {
 			Program(node) {
-				aliases = collectTypeAliases(node, context.sourceCode.visitorKeys);
+				aliases.clear();
+				for (const statement of node.body) {
+					const declaration =
+						statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+					if (declaration?.type === "TSTypeAliasDeclaration") {
+						aliases.set(declaration.id.name, declaration);
+					}
+				}
 				for (const alias of aliases.values()) {
 					if (!resolvesToUnknown(alias.typeAnnotation, new Set([alias.id.name]))) continue;
 					context.report({

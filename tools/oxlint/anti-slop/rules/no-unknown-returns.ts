@@ -2,11 +2,18 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
-import type { FunctionLike } from "../shared/function-parameters.ts";
-import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
-import { collectTypeAliases, referencedAliasName } from "../shared/type-aliases.ts";
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
+import { referencedAliasName } from "../shared/type-nodes.ts";
 
-/** Ban function contracts that return unknown instead of a parsed domain type. */
+type FunctionWithReturnType =
+  | ESTree.ArrowFunctionExpression
+  | ESTree.Function
+  | ESTree.TSCallSignatureDeclaration
+  | ESTree.TSConstructSignatureDeclaration
+  | ESTree.TSConstructorType
+  | ESTree.TSFunctionType
+  | ESTree.TSMethodSignature;
+
 export const noUnknownReturnsRule = defineRule({
   meta: {
     type: "problem",
@@ -20,7 +27,7 @@ export const noUnknownReturnsRule = defineRule({
     },
   },
   createOnce(context) {
-    let aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration> = new Map();
+    const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
     const resolvesToUnknown = (
       type: ESTree.TSType,
@@ -58,13 +65,13 @@ export const noUnknownReturnsRule = defineRule({
       return resolvesToUnknown(alias.typeAnnotation, shadowedAliases, nextVisited);
     };
 
-    const checkReturnType = (node: FunctionLike) => {
+    const checkReturnType = (node: FunctionWithReturnType) => {
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (
         !resolvesToUnknown(
           annotation.typeAnnotation,
-          lexicalTypeParameterNames(node, context.sourceCode.visitorKeys),
+          shadowedTypeNames(node, context.sourceCode.visitorKeys),
         )
       ) {
         return;
@@ -74,7 +81,14 @@ export const noUnknownReturnsRule = defineRule({
 
     return {
       Program(node) {
-        aliases = collectTypeAliases(node, context.sourceCode.visitorKeys);
+        aliases.clear();
+        for (const statement of node.body) {
+          const declaration =
+            statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+          if (declaration?.type === "TSTypeAliasDeclaration") {
+            aliases.set(declaration.id.name, declaration);
+          }
+        }
       },
       ArrowFunctionExpression: checkReturnType,
       FunctionDeclaration: checkReturnType,

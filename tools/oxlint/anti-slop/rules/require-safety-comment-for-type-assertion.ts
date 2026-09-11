@@ -1,13 +1,10 @@
 import { defineRule } from "@oxlint/plugins";
 
+import { isConstAssertion, type TypeAssertion } from "../shared/type-nodes.ts";
+
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
-import {
-  isConstAssertion,
-  type TypeAssertionExpression,
-} from "../shared/type-assertions.ts";
-
-const SAFETY_PATTERN = /\bSAFETY\s*:/u;
+const SAFETY_COMMENT = /\bSAFETY\s*:/u;
 
 // The walk must stop at the statement list holding the assertion's own statement:
 // climbing further would let one comment above a function justify every assertion
@@ -21,22 +18,21 @@ const statementListContainers = new Set([
   "TSModuleBlock",
 ]);
 
-function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertionExpression): boolean {
-  const hasSafetyBefore = (target: ESTree.Node) =>
+function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
+  const hasSafetyCommentBefore = (target: ESTree.Node) =>
     sourceCode
       .getCommentsBefore(target)
-      .some((comment) => comment.end <= node.start && SAFETY_PATTERN.test(comment.value));
+      .some((comment) => comment.end <= node.start && SAFETY_COMMENT.test(comment.value));
 
   let current: ESTree.Node = node;
   while (true) {
-    if (hasSafetyBefore(current)) return true;
+    if (hasSafetyCommentBefore(current)) return true;
     const parent: ESTree.Node | null = current.parent;
     if (parent === null || statementListContainers.has(parent.type)) return false;
     current = parent;
   }
 }
 
-/** Require every non-const type assertion to state the invariant TypeScript cannot express. */
 export const requireSafetyCommentForTypeAssertionRule = defineRule({
   meta: {
     type: "problem",
@@ -50,7 +46,7 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
     },
   },
   createOnce(context) {
-    const checkAssertion = (node: TypeAssertionExpression) => {
+    const checkAssertion = (node: TypeAssertion) => {
       if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node)) return;
       context.report({ node, messageId: "missingSafetyComment" });
     };

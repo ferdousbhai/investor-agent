@@ -4,11 +4,10 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 import {
 	parameterAnnotation,
-	type FunctionLike,
 	type Parameter,
+	type ParameterOwner,
 } from "../shared/function-parameters.ts";
-import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
-import { collectTypeAliases } from "../shared/type-aliases.ts";
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
 
 function parameterName(parameter: Parameter, sourceCode: SourceCode): string {
 	return parameter.type === "Identifier"
@@ -16,7 +15,6 @@ function parameterName(parameter: Parameter, sourceCode: SourceCode): string {
 		: sourceCode.getText(parameter).replace(/\s*:\s*object\s*$/u, "");
 }
 
-/** Ban the broad object type on function inputs, including local aliases to object. */
 export const noObjectParametersRule = defineRule({
 	meta: {
 		type: "problem",
@@ -63,8 +61,8 @@ export const noObjectParametersRule = defineRule({
 			return resolvesToObject(alias, shadowedAliases, nextVisited);
 		};
 
-		const checkParameters = (node: FunctionLike) => {
-			const shadowedAliases = lexicalTypeParameterNames(
+		const checkParameters = (node: ParameterOwner) => {
+			const shadowedAliases = shadowedTypeNames(
 				node,
 				context.sourceCode.visitorKeys,
 			);
@@ -83,12 +81,14 @@ export const noObjectParametersRule = defineRule({
 		return {
 			Program(node) {
 				aliases.clear();
-				for (const [name, declaration] of collectTypeAliases(
-					node,
-					context.sourceCode.visitorKeys,
-				)) {
-					if (declaration.typeParameters === null || declaration.typeParameters === undefined) {
-						aliases.set(name, declaration.typeAnnotation);
+				for (const statement of node.body) {
+					const declaration =
+						statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+					if (
+						declaration?.type === "TSTypeAliasDeclaration" &&
+						(declaration.typeParameters === null || declaration.typeParameters === undefined)
+					) {
+						aliases.set(declaration.id.name, declaration.typeAnnotation);
 					}
 				}
 			},

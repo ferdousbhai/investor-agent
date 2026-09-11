@@ -1,8 +1,7 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree, Variable } from "@oxlint/plugins";
 
-import { typeReferenceName } from "../shared/dictionary-types.ts";
-import { unwrapParentheses } from "../shared/expressions.ts";
+import { typeReferenceName, unwrapParentheses } from "../shared/type-nodes.ts";
 
 type BroadTypeKind = "top" | "object" | "record";
 
@@ -304,7 +303,6 @@ function assertionIsNarrower(
   return isDefinitelyNarrowerRecordType(assertedType);
 }
 
-/** Detect immutable local bindings that erase a known type and are later asserted back to a narrower type. */
 export const noWidenThenAssertRule = defineRule({
   meta: {
     type: "problem",

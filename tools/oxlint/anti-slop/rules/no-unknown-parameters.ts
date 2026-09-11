@@ -2,8 +2,8 @@ import { defineRule } from "@oxlint/plugins";
 
 import {
   parameterAnnotation,
-  type FunctionLike,
   type Parameter,
+  type ParameterOwner,
 } from "../shared/function-parameters.ts";
 
 function parameterName(parameter: Parameter, sourceText: string): string {
@@ -21,7 +21,6 @@ function parameterName(parameter: Parameter, sourceText: string): string {
     : sourceText.replace(/\s*:\s*unknown\s*$/u, "");
 }
 
-/** Disallow unknown inputs except explicitly named error-cause enrichment. */
 export const noUnknownParametersRule = defineRule({
   meta: {
     type: "problem",
@@ -35,7 +34,7 @@ export const noUnknownParametersRule = defineRule({
     },
   },
   createOnce(context) {
-    const checkParameters = (node: FunctionLike) => {
+    const checkParameters = (node: ParameterOwner) => {
       for (const parameter of node.params) {
         const annotation = parameterAnnotation(parameter);
         if (annotation?.typeAnnotation.type !== "TSUnknownKeyword") continue;

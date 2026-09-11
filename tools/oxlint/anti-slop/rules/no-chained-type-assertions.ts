@@ -1,17 +1,13 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 
-import { unwrapParentheses } from "../shared/expressions.ts";
-import {
-  isConstAssertion,
-  type TypeAssertionExpression,
-} from "../shared/type-assertions.ts";
+import { isConstAssertion, unwrapParentheses, type TypeAssertion } from "../shared/type-nodes.ts";
 
-function isTypeAssertionExpression(node: ESTree.Node): node is TypeAssertionExpression {
+function isTypeAssertionExpression(node: ESTree.Node): node is TypeAssertion {
   return node.type === "TSAsExpression" || node.type === "TSTypeAssertion";
 }
 
-function isOutermostAssertionInChain(node: TypeAssertionExpression): boolean {
+function isOutermostAssertionInChain(node: TypeAssertion): boolean {
   let current: ESTree.Expression = node;
   let parent = node.parent;
 
@@ -23,7 +19,7 @@ function isOutermostAssertionInChain(node: TypeAssertionExpression): boolean {
   return !isTypeAssertionExpression(parent) || parent.expression !== current;
 }
 
-function isForbiddenAssertionChain(node: TypeAssertionExpression): boolean {
+function isForbiddenAssertionChain(node: TypeAssertion): boolean {
   let assertionCount = 0;
   let hasNonConstAssertion = false;
   let current: ESTree.Expression = node;
@@ -37,7 +33,6 @@ function isForbiddenAssertionChain(node: TypeAssertionExpression): boolean {
   return assertionCount > 1 && hasNonConstAssertion;
 }
 
-/** Disallow nested TypeScript type assertions, while permitting chains made only of const assertions. */
 export const noChainedTypeAssertionsRule = defineRule({
   meta: {
     type: "problem",
@@ -51,7 +46,7 @@ export const noChainedTypeAssertionsRule = defineRule({
     },
   },
   createOnce(context) {
-    const checkTypeAssertion = (node: TypeAssertionExpression) => {
+    const checkTypeAssertion = (node: TypeAssertion) => {
       if (!isOutermostAssertionInChain(node) || !isForbiddenAssertionChain(node)) return;
       context.report({ node, messageId: "chained" });
     };
