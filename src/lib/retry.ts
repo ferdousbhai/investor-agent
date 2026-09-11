@@ -5,14 +5,11 @@
 export type AttemptFailure = {
   /** Lowercased rendering of the thrown value, for message matching. */
   readonly description: string;
-  /** Set only when the thrown value was an HTTP `Response`. */
-  readonly response: Response | null;
 };
 
 function toAttemptFailure(cause: unknown): AttemptFailure {
   return {
     description: String(cause).toLowerCase(),
-    response: cause instanceof Response ? cause : null,
   };
 }
 
@@ -82,7 +79,5 @@ const RETRYABLE_MARKERS = [
 ] as const;
 
 function isRetryableFailure(failure: AttemptFailure): boolean {
-  if (RETRYABLE_MARKERS.some((marker) => failure.description.includes(marker))) return true;
-  const { response } = failure;
-  return response !== null && (response.status >= 500 || response.status === 429);
+  return RETRYABLE_MARKERS.some((marker) => failure.description.includes(marker));
 }
