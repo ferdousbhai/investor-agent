@@ -9,12 +9,16 @@ import {
 
 const SAFETY_PATTERN = /\bSAFETY\s*:/u;
 
-const commentOwnerKinds = new Set([
-  "ExpressionStatement",
-  "PropertyDefinition",
-  "ReturnStatement",
-  "ThrowStatement",
-  "VariableDeclaration",
+// The walk must stop at the statement list holding the assertion's own statement:
+// climbing further would let one comment above a function justify every assertion
+// inside it.
+const statementListContainers = new Set([
+  "BlockStatement",
+  "ClassBody",
+  "Program",
+  "StaticBlock",
+  "SwitchCase",
+  "TSModuleBlock",
 ]);
 
 function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertionExpression): boolean {
@@ -26,15 +30,9 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertionExpression)
   let current: ESTree.Node = node;
   while (true) {
     if (hasSafetyBefore(current)) return true;
-    if (commentOwnerKinds.has(current.type)) {
-      const { parent } = current;
-      if (parent.type === "ExportNamedDeclaration" || parent.type === "ExportDefaultDeclaration") {
-        return hasSafetyBefore(parent);
-      }
-      return false;
-    }
-    if (current.parent.type === "Program") return false;
-    current = current.parent;
+    const parent: ESTree.Node | null = current.parent;
+    if (parent === null || statementListContainers.has(parent.type)) return false;
+    current = parent;
   }
 }
 
