@@ -44,7 +44,7 @@ pnpm install
 pnpm run deploy
 ```
 
-Point your client at `https://investor-agent.<your-subdomain>.workers.dev`, or attach a custom domain in the Cloudflare dashboard.
+Point your client at `https://investor-agent.<your-subdomain>.workers.dev/mcp`, or attach a custom domain in the Cloudflare dashboard.
 
 ## License
 
