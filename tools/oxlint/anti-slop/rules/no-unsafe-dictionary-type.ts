@@ -5,6 +5,7 @@ import {
 	classifyUnsafeDictionaryValue,
 	createTypeEnvironment,
 	type TypeEnvironment,
+	type UnsafeDictionaryValue,
 } from "../shared/dictionary-types.ts";
 
 import type { ESTree } from "@oxlint/plugins";
@@ -72,16 +73,21 @@ function isPlainAliasConsumerUse(node: ESTree.TSType, environment: TypeEnvironme
 	return name !== null && environment.aliases.has(name) && !isInsideTypeAliasDeclaration(node);
 }
 
-function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): boolean {
-	if (isPlainAliasConsumerUse(node, environment)) return false;
-	if (classifyUnsafeDictionary(node, environment) === null) return false;
+/** The unsafe value type to report for a node, or null when it must not be reported. */
+function unsafeValueToReport(
+	node: ESTree.TSType,
+	environment: TypeEnvironment,
+): UnsafeDictionaryValue | null {
+	if (isPlainAliasConsumerUse(node, environment)) return null;
+	const unsafe = classifyUnsafeDictionary(node, environment);
+	if (unsafe === null) return null;
 	let current: ESTree.Node | null = node.parent;
 	while (current !== null && current.type !== "Program") {
 		if (isTypeNode(current) && classifyUnsafeDictionary(current, environment) !== null)
-			return false;
+			return null;
 		current = current.parent;
 	}
-	return true;
+	return unsafe;
 }
 
 /** Disallow object-dictionary contracts whose direct value type is an unsafe escape hatch. */
@@ -103,10 +109,9 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 			context.report({ node, messageId: "unsafeDictionary", data: { value } });
 		};
 		const reportIfUnsafe = (node: ESTree.TSType) => {
-			if (environment === null || !shouldReportType(node, environment)) return;
-			const unsafe = classifyUnsafeDictionary(node, environment);
-			if (unsafe === null) return;
-			report(node, unsafe.unsafeValue);
+			if (environment === null) return;
+			const unsafe = unsafeValueToReport(node, environment);
+			if (unsafe !== null) report(node, unsafe);
 		};
 
 		return {
@@ -127,7 +132,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 					node.typeAnnotation.typeAnnotation,
 					environment,
 				);
-				if (unsafe !== null) report(node, unsafe.unsafeValue);
+				if (unsafe !== null) report(node, unsafe);
 			},
 		};
 	},
