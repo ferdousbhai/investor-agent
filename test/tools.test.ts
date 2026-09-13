@@ -465,4 +465,22 @@ describe("calculateIndicator", () => {
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", numResults: -1 })
     ).rejects.toThrow("numResults must be a positive integer");
   });
+
+  it("throws on unsupported indicator type", async () => {
+    const history = Array.from({ length: 30 }, (_, i) => ({
+      date: new Date(2024, 0, i + 1),
+      close: 149 + i,
+      open: 148,
+      high: 155,
+      low: 145,
+      volume: 1000000,
+    }));
+    yahoo.historical.mockResolvedValue(history);
+
+    // SAFETY: deliberately out-of-contract input — this test exists to prove the runtime
+    // guard rejects indicators the IndicatorType union cannot express.
+    await expect(
+      calculateIndicator("AAPL", "INVALID" as never, { period1: "2023-01-01" })
+    ).rejects.toThrow("Unsupported indicator");
+  });
 });
