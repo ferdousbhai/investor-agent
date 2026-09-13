@@ -1,5 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 
+import { shadowedTypeNames } from "../shared/shadowed-type-names.ts";
 import { referencedAliasName } from "../shared/type-nodes.ts";
 
 import type { ESTree } from "@oxlint/plugins";
@@ -19,12 +20,16 @@ export const noUnknownTypeAliasesRule = defineRule({
 	createOnce(context) {
 		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
-		const resolvesToUnknown = (type: ESTree.TSType, visited = new Set<string>()): boolean => {
+		const resolvesToUnknown = (
+			type: ESTree.TSType,
+			shadowedAliases: ReadonlySet<string>,
+			visited = new Set<string>(),
+		): boolean => {
 			if (type.type === "TSUnknownKeyword") return true;
 			if (type.type === "TSParenthesizedType")
-				return resolvesToUnknown(type.typeAnnotation, visited);
+				return resolvesToUnknown(type.typeAnnotation, shadowedAliases, visited);
 			const name = referencedAliasName(type);
-			if (name === null || visited.has(name)) return false;
+			if (name === null || visited.has(name) || shadowedAliases.has(name)) return false;
 			const alias = aliases.get(name);
 			if (
 				alias === undefined ||
@@ -34,7 +39,7 @@ export const noUnknownTypeAliasesRule = defineRule({
 			}
 			const nextVisited = new Set(visited);
 			nextVisited.add(name);
-			return resolvesToUnknown(alias.typeAnnotation, nextVisited);
+			return resolvesToUnknown(alias.typeAnnotation, shadowedAliases, nextVisited);
 		};
 
 		return {
@@ -48,7 +53,19 @@ export const noUnknownTypeAliasesRule = defineRule({
 					}
 				}
 				for (const alias of aliases.values()) {
-					if (!resolvesToUnknown(alias.typeAnnotation, new Set([alias.id.name]))) continue;
+					// A generic alias binds its own parameters over its right-hand side, so `type
+					// Boxed<Draft> = Draft` means the parameter and not a same-named top-level alias.
+					// This rule reads Program-level aliases, so its own parameters are the only
+					// names that can shadow here, which is why an enclosing-scope fix missed it.
+					if (
+						!resolvesToUnknown(
+							alias.typeAnnotation,
+							shadowedTypeNames(alias.typeAnnotation, context.sourceCode.visitorKeys),
+							new Set([alias.id.name]),
+						)
+					) {
+						continue;
+					}
 					context.report({
 						node: alias.id,
 						messageId: "unknownAlias",
