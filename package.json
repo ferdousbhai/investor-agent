@@ -17,6 +17,7 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
+    "workers-builds:build": "pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
     "typecheck": "tsc --noEmit",
     "inspect": "pnpm dlx @modelcontextprotocol/inspector node dist/index.js",
     "lint": "oxlint"
