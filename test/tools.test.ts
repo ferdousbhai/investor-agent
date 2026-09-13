@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
-import { resetYahooClient, setYahooClient, getHistorical } from "../src/lib/yahoo.js";
+import { resetYahooClient, setYahooClient, quoteSummary, getHistorical, getOptions } from "../src/lib/yahoo.js";
 import { fetchJson } from "../src/lib/fetch.js";
 
 const yahoo = {
@@ -66,6 +66,18 @@ describe("fetchJson", () => {
   });
 });
 
+describe("quoteSummary", () => {
+  it("forwards modules to the client and returns the payload", async () => {
+    yahoo.quoteSummary.mockResolvedValue({
+      price: { regularMarketPrice: 150 },
+    });
+
+    const result = await quoteSummary("AAPL", ["price"]);
+    expect(result).toHaveProperty("price");
+    expect(yahoo.quoteSummary).toHaveBeenCalledWith("AAPL", { modules: ["price"] });
+  });
+});
+
 describe("getHistorical", () => {
   it("returns historical price data", async () => {
     const mockData = [
@@ -106,6 +118,26 @@ describe("getHistorical", () => {
     await expect(
       getHistorical("AAPL", { period1: "2024-01-01", period2: "2024-06-01", interval: "1d" })
     ).rejects.toThrow("Yahoo historical response was malformed");
+  });
+});
+
+describe("getOptions", () => {
+  it("forwards the date option to the client", async () => {
+    yahoo.options.mockResolvedValue({
+      expirationDates: ["2024-03-15"],
+      options: [{ calls: [], puts: [] }],
+    });
+
+    const result = await getOptions("AAPL", { date: "2024-03-15" });
+    expect(result).toHaveProperty("expirationDates");
+    expect(yahoo.options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
+  });
+
+  it("calls without options when no date is given", async () => {
+    yahoo.options.mockResolvedValue({ expirationDates: [] });
+
+    await getOptions("AAPL");
+    expect(yahoo.options).toHaveBeenCalledWith("AAPL", undefined);
   });
 });
 

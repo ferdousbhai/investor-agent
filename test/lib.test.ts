@@ -40,6 +40,20 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  it("retries on 429 and network markers", async () => {
+    for (const message of ["HTTP 429: Too Many Requests", "network failure"]) {
+      const fn = vi.fn().mockRejectedValueOnce(new Error(message)).mockResolvedValue("ok");
+
+      const promise = withRetry(fn, { initialDelayMs: 10, maxAttempts: 3 });
+
+      await vi.advanceTimersByTimeAsync(50);
+
+      const result = await promise;
+      expect(result).toBe("ok");
+      expect(fn).toHaveBeenCalledTimes(2);
+    }
+  });
+
   it("throws after max attempts exhausted", async () => {
     const fn = vi.fn().mockRejectedValue(new Error("503 service unavailable"));
 
