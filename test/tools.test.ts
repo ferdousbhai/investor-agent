@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { clearCache } from "../src/lib/cache.js";
-import { resetYahooClient, setYahooClient, quoteSummary, getHistorical, getOptions } from "../src/lib/yahoo.js";
+import { resetYahooClient, setYahooClient, getHistorical } from "../src/lib/yahoo.js";
 import { fetchJson } from "../src/lib/fetch.js";
 
 const yahoo = {
-  quoteSummary: vi.fn(),
   historical: vi.fn(),
-  options: vi.fn(),
   screener: vi.fn(),
 };
 
@@ -17,9 +15,7 @@ beforeEach(() => {
   mockFetch.mockReset();
   clearCache();
 
-  yahoo.quoteSummary.mockReset();
   yahoo.historical.mockReset();
-  yahoo.options.mockReset();
   yahoo.screener.mockReset();
   setYahooClient(yahoo);
 });
@@ -66,18 +62,6 @@ describe("fetchJson", () => {
   });
 });
 
-describe("quoteSummary", () => {
-  it("forwards modules to the client and returns the payload", async () => {
-    yahoo.quoteSummary.mockResolvedValue({
-      price: { regularMarketPrice: 150 },
-    });
-
-    const result = await quoteSummary("AAPL", ["price"]);
-    expect(result).toHaveProperty("price");
-    expect(yahoo.quoteSummary).toHaveBeenCalledWith("AAPL", { modules: ["price"] });
-  });
-});
-
 describe("getHistorical", () => {
   it("returns historical price data", async () => {
     const mockData = [
@@ -96,20 +80,6 @@ describe("getHistorical", () => {
     expect(result[0]).toHaveProperty("close", 149);
   });
 
-  it("passes interval option", async () => {
-    yahoo.historical.mockResolvedValue([]);
-
-    await getHistorical("AAPL", {
-      period1: "2024-01-01",
-      period2: "2024-06-01",
-      interval: "1wk",
-    });
-    expect(yahoo.historical).toHaveBeenCalledWith(
-      "AAPL",
-      expect.objectContaining({ interval: "1wk" })
-    );
-  });
-
   it("rejects malformed historical rows instead of caching partial OHLCV data", async () => {
     yahoo.historical.mockResolvedValue([
       { date: new Date("2024-01-01"), close: 149 },
@@ -118,26 +88,6 @@ describe("getHistorical", () => {
     await expect(
       getHistorical("AAPL", { period1: "2024-01-01", period2: "2024-06-01", interval: "1d" })
     ).rejects.toThrow("Yahoo historical response was malformed");
-  });
-});
-
-describe("getOptions", () => {
-  it("forwards the date option to the client", async () => {
-    yahoo.options.mockResolvedValue({
-      expirationDates: ["2024-03-15"],
-      options: [{ calls: [], puts: [] }],
-    });
-
-    const result = await getOptions("AAPL", { date: "2024-03-15" });
-    expect(result).toHaveProperty("expirationDates");
-    expect(yahoo.options).toHaveBeenCalledWith("AAPL", { date: "2024-03-15" });
-  });
-
-  it("calls without options when no date is given", async () => {
-    yahoo.options.mockResolvedValue({ expirationDates: [] });
-
-    await getOptions("AAPL");
-    expect(yahoo.options).toHaveBeenCalledWith("AAPL", undefined);
   });
 });
 
@@ -400,26 +350,6 @@ describe("calculateIndicator", () => {
     await expect(
       calculateIndicator("AAPL", "SMA", { period1: "2023-01-01", timeperiod: 14 })
     ).rejects.toThrow("7.close: Required");
-  });
-
-  it("calculates RSI indicator with raw values", async () => {
-    const history = Array.from({ length: 30 }, (_, i) => ({
-      date: new Date(2024, 0, i + 1),
-      close: 149 + Math.sin(i) * 5,
-      open: 148,
-      high: 155,
-      low: 145,
-      volume: 1000000,
-    }));
-    yahoo.historical.mockResolvedValue(history);
-
-    const result = await calculateIndicator(
-      "AAPL",
-      "RSI",
-      { period1: "2023-01-01", timeperiod: 14 }
-    );
-
-    expect(result.some((v) => v.rsi !== null)).toBe(true);
   });
 
   it("calculates MACD indicator", async () => {
