@@ -9,6 +9,7 @@ dist/
 .idea/
 
 .wrangler/
+.cloudflare/
 
 .DS_Store
 Thumbs.db

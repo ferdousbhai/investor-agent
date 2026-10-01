@@ -13,7 +13,7 @@ MCP server for market data, available through a stdio CLI and Cloudflare Worker 
 - `src/lib/validation.ts` — shared input validation
 - `test/` — tool and library tests
 - `commands/` and `skills/` — Claude Code plugin surface, outside the MCP build
-- `wrangler.jsonc` — Worker configuration
+- `cloudflare.config.ts` — Worker configuration; `wrangler.config.ts` — Wrangler build settings (the `__dirname` define)
 
 Tool contracts and TypeScript types are authoritative and must change together.
 

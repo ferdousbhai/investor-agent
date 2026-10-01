@@ -37,7 +37,7 @@ pnpm run typecheck
 
 ## Deploy to Cloudflare Workers
 
-The server also runs as a remote MCP server on Workers (`src/worker.ts`). `wrangler.jsonc` is ready to deploy as-is:
+The server also runs as a remote MCP server on Workers (`src/worker.ts`). `cloudflare.config.ts` is ready to deploy as-is with the `cf` CLI:
 
 ```bash
 pnpm install

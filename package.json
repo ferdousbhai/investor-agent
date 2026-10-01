@@ -13,8 +13,8 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/index.js",
     "prepare": "pnpm run build",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "cf dev",
+    "deploy": "cf deploy",
     "test": "vitest run",
     "test:watch": "vitest",
     "workers-builds:build": "pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
@@ -50,10 +50,11 @@
     "@cloudflare/workers-types": "^4.20250214.0",
     "@oxlint/plugins": "1.78.0",
     "@types/node": "^22.0.0",
+    "cf": "1.0.0-beta.10",
     "oxlint": "1.78.0",
     "shx": "^0.3.4",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
-    "wrangler": "^4.73.0"
+    "wrangler": "^4.145.0"
   }
 }
