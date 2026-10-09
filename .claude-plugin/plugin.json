@@ -13,8 +13,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "investor-agent": {
-      "command": "npx",
-      "args": ["-y", "investor-agent"]
+      "type": "http",
+      "url": "https://investor.ferdousbhai.com/mcp"
     }
   }
 }

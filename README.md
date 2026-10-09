@@ -4,12 +4,46 @@ Financial research MCP server for long-term investors.
 
 ## Setup
 
+### Hosted (remote MCP)
+
+A hosted instance runs on Cloudflare Workers at `https://investor.ferdousbhai.com/mcp` (Streamable HTTP, no auth). For Claude Code:
+
+```bash
+claude mcp add --transport http investor-agent https://investor.ferdousbhai.com/mcp
+```
+
+Or in an MCP client config that supports remote servers:
+
 ```json
 {
   "mcpServers": {
     "investor-agent": {
-      "command": "npx",
-      "args": ["-y", "investor-agent"]
+      "type": "http",
+      "url": "https://investor.ferdousbhai.com/mcp"
+    }
+  }
+}
+```
+
+### Local (stdio, from source)
+
+This package is not published to npm. Do not run `npx investor-agent`: nothing under that npm name is published by this project. Build from this repository instead:
+
+```bash
+git clone https://github.com/ferdousbhai/investor-agent.git
+cd investor-agent
+pnpm install
+pnpm run build
+```
+
+Then point your client at the built entry point:
+
+```json
+{
+  "mcpServers": {
+    "investor-agent": {
+      "command": "node",
+      "args": ["/absolute/path/to/investor-agent/dist/index.js"]
     }
   }
 }
