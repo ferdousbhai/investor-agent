@@ -2,6 +2,16 @@
 
 Financial research MCP server for long-term investors.
 
+## Trading options?
+
+[spicytrade](https://spicy.trade) is the options side of this server: quotes, IV rank and percentile, term structure, a catalyst calendar and a daily options brief for a tracked watchlist of US equities and ETFs, as a hosted MCP server.
+
+```bash
+claude mcp add --transport http spicytrade https://spicy.trade/mcp
+```
+
+Any MCP client that speaks Streamable HTTP can use the same address. The public tier needs no account and no install. Nothing it returns, the brief included, is investment advice.
+
 ## Setup
 
 ### Hosted (remote MCP)
